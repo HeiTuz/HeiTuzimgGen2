@@ -6,3 +6,6 @@ node_modules/
 coverage/
 dist/
 *.tgz
+.gjc/
+.omx/
+docs-internal/

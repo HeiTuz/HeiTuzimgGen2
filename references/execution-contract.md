@@ -2,7 +2,8 @@
 
 ## Supported route
 
-The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `imagegen` skill. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
+The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `image_generation` tool. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
+`HeiTuzMPW` owns image-prompt compilation when installed. HeiTuzimgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
 
 No part of this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Authentication failures are terminal and must be reported without raw subprocess output.
 
@@ -18,9 +19,35 @@ A successful file does not by itself prove exact model identity. Say “generate
 
 ## Approval boundary
 
-Dry-run is always allowed and is the default. Before the first live image, Vision inspection, or Telegram delivery, stop and request approval for that immediate action. Live generation additionally requires `--execute` and `HERMES_IMAGE_LIVE_APPROVED=1` on that single invocation.
+Dry-run is always allowed and is the default.
 
-Do not persist the marker in shell profiles, config, `.env`, or scripts. Remove it from the next invocation. A failure does not authorize a fallback or automatic retry.
+**Single image:** before the live image, stop and request approval for that immediate action. Live generation requires `--execute` and `HERMES_IMAGE_LIVE_APPROVED=1` on that single invocation.
+
+**Production batch:** first dry-run `codex_subscription_batch.py` and present `manifest_sha256`, reference evidence, `approval_sha256`, job count, pilot, outputs, and worker bounds. Fresh approval applies only to that immutable manifest+configuration scope. Live execution requires `--execute` and `HERMES_IMAGE_BATCH_APPROVAL_SHA256=<approval_sha256>`. The runner then sets the single-call marker only inside that approved bounded pass. Any manifest, reference-byte, or worker-config change invalidates approval. An operational or QC retry is a new manifest and needs a new dry-run and approval.
+
+Do not persist either marker in shell profiles, config, `.env`, or scripts. A failure does not authorize a provider/model fallback or an unbounded automatic retry. Vision inspection and Telegram delivery remain separately approved external actions.
+
+## Production batch ownership
+
+`codex_subscription_transport.py --batch-dir` is one image call with a dated destination; it is not the production batch engine. The authoritative multi-cut surface is `codex_subscription_batch.py` and `references/batch-production-contract.md`.
+
+The first manifest record is a sequential capability-and-quality pilot. Its session/thread-scoped transport must succeed, then the runner stops with `awaiting_pilot_qc: true`. Bounded adaptive fan-out opens only after independent four-axis QC (and promo QC when applicable) is reconciled as passed. The output root has one exclusive runner lock and one atomic ledger. Resume requires ledger ownership plus matching regular-file SHA-256 and size; path existence alone is a conflict. One pass makes at most one attempt per pending job. Partial failures are recorded and exported to a retry manifest rather than looped under stale approval.
+
+Hermes subagents may compile or independently QC disjoint shards. Live executor shards must have separate output roots and ledgers; one prime/aggregator validates IDs/output ownership and reconciles final results. Two agents must never write one live ledger.
+
+## Artifact recovery
+
+Immediately before the live Codex call, the helper snapshots `~/.codex/generated_images`. After the call it requires a zero exit and accepts only a non-empty PNG that is both absent from that snapshot and physically under a session directory whose session/thread ID appears in that invocation's structured CLI output. It rejects every artifact from a nonzero invocation, fails closed when no session/thread ID or qualifying session-scoped PNG exists, and never falls back to a global generated-image pool. Retain the resolved source path as `source_artifact`.
+
+This rejects stale files, late artifacts from prior retries, and artifacts from parallel sessions. Destination creation uses exclusive create semantics, so an output appearing between validation and recovery is not overwritten.
+
+## Transport state and QC
+
+Dry-run JSON reports `transport_state: "dry_run"` and `qc_status: "not_evaluated"`. After a copied non-empty PNG, live JSON reports `transport_state: "succeeded"` while `qc_status` remains `not_evaluated`. The file establishes transport success only; it does not establish visual quality or model identity.
+
+The pure, network-free QC helpers consume local or human observations on four 0–5 axes: `goal_fit`, `text_accuracy`, `material_realism`, and `layout`. QC passes if and only if the average is at least 4 and, when rendered text exists, `text_accuracy` is at least 4. They report failed axes and deltas only for those axes, then plan regeneration of the one affected output. Promotional outputs must set the promotional branch and provide promo QC; omission is an error. Promo QC checks physical type/subject interaction, generic-card regression, printed-not-literal meta-UI, a two-to-three-color lock, one-to-three finishing devices, and Korean glyph/mask safety.
+
+For text recovery, tighten role, position, and copy precision first; use a larger canvas only when the current transport actually supports it; then reduce noncritical copy and regenerate only the failed cut. The current helper has no size flag or size-capability probe and does not fake one.
 
 ## Output and delivery
 

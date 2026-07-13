@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.heituz.dev/imggen2/apparel-dynamic-fullset-folder.schema.json",
+  "title": "HeiTuzimgGen2 apparel dynamic full-set folder contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "folder_id", "source_folder", "sources", "vision_role_map", "heituzmpw_folder_master", "qc_contract", "outputs"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "folder_id": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$"},
+    "source_folder": {"type": "string", "minLength": 1},
+    "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$"}},
+    "vision_role_map": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["file", "role"],
+        "properties": {
+          "file": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$"},
+          "role": {"type": "string", "minLength": 1},
+          "color_identity": {"type": "string", "minLength": 1}
+        },
+        "if": {"properties": {"role": {"const": "color_front"}}, "required": ["role"]},
+        "then": {"required": ["color_identity"]}
+      }
+    },
+    "normalized_color_identity": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "unique_color_count": {"type": "integer", "minimum": 1},
+    "heituzmpw_folder_master": {"type": "string", "minLength": 1},
+    "qc_contract": {"type": "string", "minLength": 1},
+    "outputs": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "filename", "prompt"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$"},
+          "filename": {"type": "string", "pattern": "^[^/\\\\]+\\.png$"},
+          "prompt": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }
+      }
+    }
+  }
+}

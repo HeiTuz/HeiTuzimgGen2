@@ -1,0 +1,532 @@
+#!/usr/bin/env python3
+"""Plan and select three independent browser-GPT apparel candidate sets.
+
+This module is network-free.  It prepares immutable per-task contracts, builds a
+Hermes delegation schedule bounded by the live runtime limit, and materializes a
+Vision-scored cross-set selection without overwriting prior artifacts.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import itertools
+import json
+import os
+import shutil
+import tempfile
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable
+
+SCHEMA_VERSION = 1
+MIN_FAMILY_SIMILARITY = 0.80
+SOURCE_IMAGE_SUFFIXES = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+
+
+class ContractError(RuntimeError):
+    pass
+
+
+def _normalize_color_identity(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ContractError("blocked: every color_front record requires an explicit non-empty color_identity")
+    normalized = " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+    if not normalized:
+        raise ContractError("blocked: every color_front record requires an explicit non-empty color_identity")
+    return normalized
+
+
+def color_identities_from_role_map(role_map: list[Any]) -> list[str]:
+    identities: list[str] = []
+    seen: set[str] = set()
+    for record in role_map:
+        if not isinstance(record, dict):
+            raise ContractError("vision_role_map records must be objects")
+        if record.get("role") != "color_front":
+            continue
+        identity = _normalize_color_identity(record.get("color_identity"))
+        if identity not in seen:
+            identities.append(identity)
+            seen.add(identity)
+    if not identities:
+        raise ContractError(
+            "blocked: no color_front color_identity records; candidate count cannot be inferred from filenames"
+        )
+    return identities
+
+
+def candidate_sets_for_count(task_count: int) -> tuple[str, ...]:
+    if isinstance(task_count, bool) or not isinstance(task_count, int) or task_count < 1:
+        raise ContractError("blocked: candidate task count must be a positive integer")
+    return tuple(f"candidate-set-{index}" for index in range(1, task_count + 1))
+
+
+def candidate_sets_for_shared_contract(shared: dict[str, Any]) -> tuple[str, ...]:
+    identities = shared.get("color_identities")
+    if not isinstance(identities, list) or not identities:
+        raise ContractError("blocked: shared contract has no dynamic color identities")
+    return candidate_sets_for_count(len(identities))
+
+
+def _coordinator_candidate_sets(coordinator: dict[str, Any], shared: dict[str, Any]) -> tuple[str, ...]:
+    expected_sets = candidate_sets_for_shared_contract(shared)
+    task_count = coordinator.get("task_count")
+    candidate_sets = coordinator.get("candidate_sets")
+    task_specs = coordinator.get("task_specs")
+    if task_count != len(expected_sets):
+        raise ContractError("coordinator task_count does not match the shared dynamic color count")
+    if candidate_sets != list(expected_sets):
+        raise ContractError("coordinator candidate_sets do not match the shared dynamic color count")
+    if not isinstance(task_specs, list) or len(task_specs) != task_count or not all(isinstance(p, str) for p in task_specs):
+        raise ContractError("coordinator task_specs do not match its dynamic task_count")
+    if coordinator.get("color_identities") != shared.get("color_identities"):
+        raise ContractError("coordinator color identities do not match the shared contract")
+    return expected_sets
+
+
+def _canonical(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def atomic_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(value, fh, ensure_ascii=False, indent=2, sort_keys=True)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
+def read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"invalid JSON {path}: {exc}") from exc
+
+
+def _safe_basename(value: str, field: str) -> str:
+    p = Path(value)
+    if not value or p.name != value or value in {".", ".."}:
+        raise ContractError(f"{field} must be one basename: {value!r}")
+    return value
+
+
+def validate_folder_contract(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict) or raw.get("schema_version") != SCHEMA_VERSION:
+        raise ContractError(f"schema_version must be {SCHEMA_VERSION}")
+    folder_id = _safe_basename(str(raw.get("folder_id", "")), "folder_id")
+    source_folder = Path(str(raw.get("source_folder", ""))).expanduser().resolve()
+    if not source_folder.is_dir():
+        raise ContractError(f"source_folder is not a directory: {source_folder}")
+
+    source_names = raw.get("sources")
+    if not isinstance(source_names, list) or not source_names:
+        raise ContractError("sources must be a non-empty list containing every original image")
+    sources: list[dict[str, Any]] = []
+    seen_sources: set[str] = set()
+    for name0 in source_names:
+        name = _safe_basename(str(name0), "sources[]")
+        if name in seen_sources:
+            raise ContractError(f"duplicate source: {name}")
+        path = source_folder / name
+        if not path.is_file():
+            raise ContractError(f"source is not a file: {path}")
+        seen_sources.add(name)
+        sources.append({"name": name, "path": str(path), "sha256": sha256_file(path), "size": path.stat().st_size})
+    actual_source_names = {p.name for p in source_folder.iterdir() if p.is_file() and p.suffix.lower() in SOURCE_IMAGE_SUFFIXES}
+    if seen_sources != actual_source_names:
+        missing = sorted(actual_source_names - seen_sources)
+        extra = sorted(seen_sources - actual_source_names)
+        raise ContractError(f"sources must enumerate the complete source image inventory; missing={missing}, extra={extra}")
+
+    outputs0 = raw.get("outputs")
+    if not isinstance(outputs0, list) or not outputs0:
+        raise ContractError("outputs must be a non-empty complete output inventory")
+    outputs: list[dict[str, str]] = []
+    ids: set[str] = set()
+    filenames: set[str] = set()
+    for item in outputs0:
+        if not isinstance(item, dict):
+            raise ContractError("each output must be an object")
+        output_id = _safe_basename(str(item.get("id", "")), "outputs[].id")
+        filename = _safe_basename(str(item.get("filename", "")), "outputs[].filename")
+        prompt = str(item.get("prompt", "")).strip()
+        if not filename.lower().endswith(".png") or not prompt:
+            raise ContractError(f"output {output_id} requires a .png filename and prompt")
+        if output_id in ids or filename in filenames:
+            raise ContractError(f"duplicate output id or filename: {output_id}/{filename}")
+        ids.add(output_id)
+        filenames.add(filename)
+        outputs.append({"id": output_id, "filename": filename, "prompt": prompt})
+
+    role_map = raw.get("vision_role_map")
+    if not isinstance(role_map, list) or not role_map:
+        raise ContractError("vision_role_map must be a non-empty list")
+    for record in role_map:
+        if not isinstance(record, dict):
+            raise ContractError("vision_role_map records must be objects")
+        role_file = _safe_basename(str(record.get("file", "")), "vision_role_map[].file")
+        if role_file not in seen_sources:
+            raise ContractError(f"vision_role_map file is not in complete source inventory: {role_file}")
+    color_identities = color_identities_from_role_map(role_map)
+    reported_identities = raw.get("normalized_color_identity")
+    if reported_identities is not None:
+        if reported_identities != color_identities:
+            raise ContractError("handoff normalized_color_identity does not match the Vision role map")
+    reported_count = raw.get("unique_color_count")
+    if reported_count is not None and reported_count != len(color_identities):
+        raise ContractError("handoff unique_color_count does not match the Vision role map")
+    folder_master = str(raw.get("heituzmpw_folder_master", "")).strip()
+    qc_contract = str(raw.get("qc_contract", "")).strip()
+    if not folder_master or not qc_contract:
+        raise ContractError("HeiTuzMPW folder master and QC contract are required")
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "folder_id": folder_id,
+        "source_folder": str(source_folder),
+        "sources": sources,
+        "vision_role_map": role_map,
+        "color_identities": color_identities,
+        "task_count": len(color_identities),
+        "heituzmpw_folder_master": folder_master,
+        "qc_contract": qc_contract,
+        "outputs": outputs,
+        "transport": "external-browser-cdp",
+        "selection_policy": {
+            "min_family_similarity": MIN_FAMILY_SIMILARITY,
+            "priority": [
+                "source_fidelity",
+                "support_removal",
+                "pure_white_no_shadow",
+                "no_invented_detail",
+                "family_similarity",
+            ],
+        },
+    }
+
+
+def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
+    shared = validate_folder_contract(read_json(contract_path))
+    candidate_sets = candidate_sets_for_shared_contract(shared)
+    folder_root = run_root.expanduser().resolve() / shared["folder_id"]
+    folder_root.mkdir(parents=True, exist_ok=True)
+    shared_sha = sha256_bytes(_canonical(shared))
+    package_path = folder_root / "shared-folder-contract.json"
+    if package_path.exists():
+        existing = read_json(package_path)
+        if sha256_bytes(_canonical(existing)) != shared_sha:
+            raise ContractError(f"refusing to replace different shared contract: {package_path}")
+    else:
+        atomic_json(package_path, shared)
+
+    task_specs = []
+    for task_index, (set_name, color_identity) in enumerate(zip(candidate_sets, shared["color_identities"]), start=1):
+        candidate_root = folder_root / set_name
+        candidate_root.mkdir(parents=True, exist_ok=True)
+        spec = {
+            "schema_version": SCHEMA_VERSION,
+            "task_id": f"task-{task_index}",
+            "task_count": len(candidate_sets),
+            "candidate_set": set_name,
+            "candidate_sets": list(candidate_sets),
+            "color_identity": color_identity,
+            "candidate_root": str(candidate_root),
+            "shared_contract_path": str(package_path),
+            "shared_contract_sha256": shared_sha,
+            "source_contract_sha256": sha256_file(contract_path),
+            "browser_surface": "browser adapter direct CDP/Playwright session",
+            "forbid": ["overwrite", "cross_session_png_recovery", "generated_result_chaining", "silent_provider_fallback"],
+        }
+        spec_path = folder_root / f"{spec['task_id']}.json"
+        if spec_path.exists() and read_json(spec_path) != spec:
+            raise ContractError(f"refusing to replace different task spec: {spec_path}")
+        if not spec_path.exists():
+            atomic_json(spec_path, spec)
+        task_specs.append(str(spec_path))
+
+    summary = {
+        "folder_id": shared["folder_id"],
+        "folder_root": str(folder_root),
+        "shared_contract_sha256": shared_sha,
+        "task_count": len(candidate_sets),
+        "candidate_sets": list(candidate_sets),
+        "color_identities": shared["color_identities"],
+        "output_inventory": [o["filename"] for o in shared["outputs"]],
+        "task_specs": task_specs,
+        "selector_input": str(folder_root / "vision-selector-report.json"),
+        "selected_root": str(folder_root / "selected"),
+    }
+    coordinator_path = folder_root / "coordinator.json"
+    if coordinator_path.exists():
+        if read_json(coordinator_path) != summary:
+            raise ContractError(f"refusing to replace different coordinator: {coordinator_path}")
+    else:
+        atomic_json(coordinator_path, summary)
+    return summary
+
+
+def _schedule_coordinator(coordinator: dict[str, Any]) -> tuple[int, list[str]]:
+    task_count = coordinator.get("task_count")
+    task_specs = coordinator.get("task_specs")
+    candidate_sets = coordinator.get("candidate_sets")
+    if isinstance(task_count, bool) or not isinstance(task_count, int) or task_count < 1:
+        raise ContractError("blocked: coordinator task_count must be a positive integer")
+    if candidate_sets != list(candidate_sets_for_count(task_count)):
+        raise ContractError("coordinator candidate_sets do not match its dynamic task_count")
+    if not isinstance(task_specs, list) or len(task_specs) != task_count or not all(isinstance(p, str) for p in task_specs):
+        raise ContractError("coordinator task_specs do not match its dynamic task_count")
+    return task_count, task_specs
+
+
+def build_schedule(coordinators: Iterable[dict[str, Any]], max_active: int) -> list[dict[str, Any]]:
+    if isinstance(max_active, bool) or not isinstance(max_active, int) or max_active < 1:
+        raise ContractError("blocked: runtime limit must be a positive integer")
+
+    waves: list[dict[str, Any]] = []
+    current: list[dict[str, Any]] = []
+    current_active = 0
+
+    def emit_wave(chunk: list[dict[str, Any]]) -> None:
+        generators = [
+            {"kind": "generator", "folder_id": coordinator["folder_id"], "task_spec": spec}
+            for coordinator in chunk
+            for spec in coordinator["task_specs"]
+        ]
+        selectors = [
+            {
+                "kind": "vision-selector",
+                "folder_id": coordinator["folder_id"],
+                "coordinator": str(Path(coordinator["folder_root"]) / "coordinator.json"),
+                "depends_on": list(coordinator["task_specs"]),
+            }
+            for coordinator in chunk
+        ]
+        waves.append({"phase": "generate", "active_count": len(generators), "tasks": generators})
+        waves.append({"phase": "select", "active_count": len(selectors), "tasks": selectors})
+
+    for coordinator in coordinators:
+        task_count, _ = _schedule_coordinator(coordinator)
+        if task_count > max_active:
+            raise ContractError(
+                f"blocked: folder {coordinator.get('folder_id', '<unknown>')} needs {task_count} generator tasks; "
+                f"runtime limit is {max_active}"
+            )
+        if current and current_active + task_count > max_active:
+            emit_wave(current)
+            current = []
+            current_active = 0
+        current.append(coordinator)
+        current_active += task_count
+    if current:
+        emit_wave(current)
+
+    if any(wave["active_count"] > max_active for wave in waves):
+        raise AssertionError("scheduler exceeded runtime limit")
+    return waves
+
+
+def _candidate_quality(entry: dict[str, Any]) -> tuple[float, bool]:
+    try:
+        fidelity = float(entry["source_fidelity"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ContractError("Vision candidate assessment needs numeric source_fidelity") from exc
+    if not 0 <= fidelity <= 1:
+        raise ContractError("source_fidelity must be in [0,1]")
+    gates = all(bool(entry.get(k)) for k in ("support_removal", "pure_white_no_shadow", "no_invented_detail"))
+    return fidelity, gates
+
+
+def _similarity_map(report: dict[str, Any]) -> dict[tuple[str, str, str, str], float]:
+    result: dict[tuple[str, str, str, str], float] = {}
+    for row in report.get("similarities", []):
+        try:
+            key = (str(row["a_output"]), str(row["a_set"]), str(row["b_output"]), str(row["b_set"]))
+            score = float(row["score"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractError("invalid Vision similarity row") from exc
+        if not 0 <= score <= 1:
+            raise ContractError("similarity score must be in [0,1]")
+        result[key] = score
+        result[(key[2], key[3], key[0], key[1])] = score
+    return result
+
+
+def _resume_selected(selected_root: Path, outputs: list[dict[str, str]]) -> dict[str, Any] | None:
+    provenance_path = selected_root / "provenance.json"
+    if not selected_root.exists():
+        return None
+    if not provenance_path.is_file():
+        raise ContractError("selected/ exists without provenance; refusing overwrite")
+    provenance = read_json(provenance_path)
+    by_id = {r["output_id"]: r for r in provenance.get("files", [])}
+    for output in outputs:
+        target = selected_root / output["filename"]
+        row = by_id.get(output["id"])
+        if not target.is_file() or not row or row.get("selected_sha256") != sha256_file(target):
+            raise ContractError("selected resume verification failed; refusing overwrite")
+    provenance["resume_verified"] = True
+    return provenance
+
+
+def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, Any]:
+    coordinator = read_json(coordinator_path)
+    folder_root = Path(coordinator["folder_root"])
+    shared = read_json(folder_root / "shared-folder-contract.json")
+    candidate_sets = _coordinator_candidate_sets(coordinator, shared)
+    outputs = shared["outputs"]
+    selected_root = folder_root / "selected"
+    resumed = _resume_selected(selected_root, outputs)
+    if resumed is not None:
+        return resumed
+
+    report = read_json(report_path)
+    if report.get("shared_contract_sha256") != coordinator["shared_contract_sha256"]:
+        raise ContractError("Vision report is not bound to this shared folder contract")
+    assessments = report.get("outputs")
+    if not isinstance(assessments, dict):
+        raise ContractError("Vision report outputs map is required")
+    similarities = _similarity_map(report)
+
+    options: list[list[dict[str, Any]]] = []
+    for output in outputs:
+        per_output = assessments.get(output["id"], {}).get("candidates", {})
+        valid = []
+        for set_name in candidate_sets:
+            source = folder_root / set_name / output["filename"]
+            entry = per_output.get(set_name)
+            if not source.is_file() or not isinstance(entry, dict):
+                continue
+            fidelity, gates = _candidate_quality(entry)
+            if gates:
+                valid.append({"set": set_name, "path": source, "assessment": entry, "fidelity": fidelity})
+        if not valid:
+            raise ContractError(f"no valid candidate for output {output['id']}")
+        options.append(valid)
+
+    best: tuple[tuple[float, float, float], tuple[dict[str, Any], ...]] | None = None
+    for combo in itertools.product(*options):
+        pair_scores: list[float] = []
+        complete = True
+        for i, j in itertools.combinations(range(len(outputs)), 2):
+            a, b = combo[i], combo[j]
+            key = (outputs[i]["id"], a["set"], outputs[j]["id"], b["set"])
+            if key not in similarities:
+                complete = False
+                break
+            pair_scores.append(similarities[key])
+        if not complete:
+            continue
+        min_similarity = min(pair_scores, default=1.0)
+        if min_similarity < MIN_FAMILY_SIMILARITY:
+            continue
+        fidelity_sum = sum(c["fidelity"] for c in combo)
+        average_similarity = sum(pair_scores) / len(pair_scores) if pair_scores else 1.0
+        score = (fidelity_sum, min_similarity, average_similarity)
+        if best is None or score > best[0]:
+            best = (score, combo)
+    if best is None:
+        raise ContractError("no complete candidate combination passes the 80% family-similarity gate")
+
+    score, combo = best
+    stage = Path(tempfile.mkdtemp(prefix=".selected-stage-", dir=folder_root))
+    files = []
+    try:
+        for output, chosen in zip(outputs, combo):
+            target = stage / output["filename"]
+            with chosen["path"].open("rb") as src, target.open("xb") as dst:
+                shutil.copyfileobj(src, dst)
+            alternatives = []
+            per_output = assessments[output["id"]].get("candidates", {})
+            for set_name in candidate_sets:
+                if set_name == chosen["set"]:
+                    continue
+                alternative = per_output.get(set_name)
+                source = folder_root / set_name / output["filename"]
+                alternatives.append({
+                    "candidate_set": set_name,
+                    "available": bool(source.is_file() and isinstance(alternative, dict)),
+                    "vision_verdict": alternative.get("vision_verdict", "") if isinstance(alternative, dict) else "",
+                })
+            task_number = chosen["set"].rsplit("-", 1)[-1]
+            files.append({
+                "output_id": output["id"],
+                "filename": output["filename"],
+                "source_task": f"task-{task_number}",
+                "source_candidate_set": chosen["set"],
+                "source_path": str(chosen["path"]),
+                "source_sha256": sha256_file(chosen["path"]),
+                "selected_sha256": sha256_file(target),
+                "vision_verdict": chosen["assessment"].get("vision_verdict", ""),
+                "source_fidelity": chosen["fidelity"],
+                "rejected_alternatives": alternatives,
+            })
+        provenance = {
+            "schema_version": SCHEMA_VERSION,
+            "folder_id": coordinator["folder_id"],
+            "shared_contract_sha256": coordinator["shared_contract_sha256"],
+            "vision_report": str(report_path.resolve()),
+            "vision_report_sha256": sha256_file(report_path),
+            "selection": "cross-set-combination",
+            "min_family_similarity_gate": MIN_FAMILY_SIMILARITY,
+            "score": {"fidelity_sum": score[0], "min_similarity": score[1], "average_similarity": score[2]},
+            "files": files,
+        }
+        atomic_json(stage / "provenance.json", provenance)
+        try:
+            stage.rename(selected_root)
+        except FileExistsError as exc:
+            raise ContractError("selected/ appeared during selection; refusing overwrite") from exc
+        return provenance
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    prep = sub.add_parser("prepare")
+    prep.add_argument("--contract", type=Path, action="append", required=True)
+    prep.add_argument("--run-root", type=Path, required=True)
+    prep.add_argument("--runtime-limit", type=int, required=True)
+    choose = sub.add_parser("select")
+    choose.add_argument("--coordinator", type=Path, required=True)
+    choose.add_argument("--vision-report", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        if args.command == "prepare":
+            coordinators = [prepare_folder(p.resolve(), args.run_root) for p in args.contract]
+            result = {"runtime_limit": args.runtime_limit, "coordinators": coordinators, "waves": build_schedule(coordinators, args.runtime_limit)}
+        else:
+            result = select_candidates(args.coordinator.resolve(), args.vision_report.resolve())
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    except ContractError as exc:
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

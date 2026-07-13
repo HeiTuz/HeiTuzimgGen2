@@ -15,14 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run network-free tests
-        run: python -m unittest discover -s scripts -p 'test_*.py' -v
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Smoke-test installer
-        run: |
-          target="$(mktemp -d)/HeiTuzimgGen2"
-          node scripts/install.mjs --target "$target"
-          test -f "$target/SKILL.md"
-          test -f "$target/scripts/codex_subscription_transport.py"
+      - name: Full network-free suite
+        run: npm test
+      - name: Installer smoke test
+        run: npm run smoke:install

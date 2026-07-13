@@ -80,6 +80,58 @@ class SkillContractTests(unittest.TestCase):
         for boundary in ("api-key billing", "private endpoints", "dom automation", "cookie extraction"):
             self.assertIn(boundary, text)
         self.assertIn("never fall back", text)
+    def test_production_batch_contract_is_explicit(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        execution = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")
+        batch_contract = (SKILL_ROOT / "references" / "batch-production-contract.md").read_text(encoding="utf-8")
+        batch_script = SKILL_ROOT / "scripts" / "codex_subscription_batch.py"
+        combined = skill + execution + batch_contract
+        self.assertTrue(batch_script.is_file())
+        for required in (
+            "HERMES_IMAGE_BATCH_APPROVAL_SHA256",
+            "manifest_sha256",
+            "approval_sha256",
+            "awaiting_pilot_qc",
+            "capability-and-quality pilot",
+            "atomic ledger",
+            "hash-verified",
+            "retry manifest",
+            "Hermes subagents",
+        ):
+            self.assertIn(required, combined)
+        self.assertIn("is still one image call", combined)
+
+    def test_apparel_dynamic_fullset_branch_preserves_role_boundaries(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        branch_path = SKILL_ROOT / "references" / "cases" / "apparel-ghost-cut-folder-batch.md"
+        selector_path = SKILL_ROOT / "references" / "browser-gpt-three-fullset-selector.md"
+        self.assertTrue(branch_path.is_file())
+        self.assertTrue(selector_path.is_file())
+        branch = branch_path.read_text(encoding="utf-8")
+        selector = selector_path.read_text(encoding="utf-8")
+        combined = skill + branch + selector
+        for required in (
+            "unique normalized `color_identity`",
+            "color_front",
+            "blocked",
+            "candidate-set-N",
+            "complete source inventory",
+            "80%",
+            "selected/",
+            "runtime-limit",
+            "no filename inference",
+            "All N generators",
+        ):
+            self.assertIn(required, combined)
+        for executable in (
+            SKILL_ROOT / "scripts" / "apparel_three_fullset.py",
+            SKILL_ROOT / "scripts" / "browser_gpt_apparel_task.py",
+            SKILL_ROOT / "references" / "apparel-three-fullset-folder.schema.json",
+            SKILL_ROOT / "references" / "apparel-handoff.schema.json",
+            SKILL_ROOT / "references" / "fixtures" / "apparel-handoff.valid.json",
+        ):
+            self.assertTrue(executable.is_file())
+        self.assertIn("version: 1.5.1", skill)
 
 
 class OutputPathTests(unittest.TestCase):
@@ -93,7 +145,7 @@ class OutputPathTests(unittest.TestCase):
         self.assertTrue(resolved.name.startswith("a-blue-ceramic-cup-"))
         self.assertTrue(resolved.name.endswith(".png"))
 
-    def test_batch_work_uses_dated_subfolder(self):
+    def test_single_call_batch_dir_uses_dated_subfolder(self):
         with tempfile.TemporaryDirectory() as tmp:
             batch_root = Path(tmp)
             resolved = transport.resolve_output("product shot", None, batch_root)

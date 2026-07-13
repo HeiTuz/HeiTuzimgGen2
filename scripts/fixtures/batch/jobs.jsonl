@@ -1,0 +1,3 @@
+{"id":"pilot-main","prompt":"A verified main-color apparel product cut on a neutral background","output_path":"main/pilot.png","promotional":false,"rendered_text_exists":false,"series_locks":{"construction":"main-pilot","material":"fabric-authority"}}
+{"id":"color-red","prompt":"The same approved apparel construction in the red colorway","output_path":"colors/red.png","promotional":false,"rendered_text_exists":false,"series_locks":{"construction":"main-pilot","material":"fabric-authority"}}
+{"id":"promo-card","prompt":"A two-color promotional poster with exact Korean headline placement","output_path":"promo/card.png","promotional":true,"rendered_text_exists":true,"series_locks":{"campaign_dna":"two-color-series"}}

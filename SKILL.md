@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
-description: "Generate or edit images through the official Codex CLI using ChatGPT subscription auth—no API key or usage credits required. Supports text-to-image, single-image edits, and combining up to four references. Single outputs default to ~/Downloads; folder batches use --batch-dir with a dated subfolder."
-version: 1.1.0
+description: "Generate and edit images through the official Codex CLI using ChatGPT subscription authentication. Includes provenance-safe single-image transport, resumable JSONL batches, independent QC, and an optional dynamic apparel full-set workflow."
+version: 1.5.1
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -13,101 +13,70 @@ metadata:
 
 # HeiTuzimgGen2
 
-This skill generates or edits one image through the official Codex CLI using the user's ChatGPT subscription. It does not attest that a particular image model produced an output unless the supported CLI returns verifiable model evidence.
+Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. The skill is transport and result-QC infrastructure; `HeiTuzMPW` owns final IMAGE prompt compilation when both are installed.
 
-## When to Use
+## Capabilities
 
-Use this skill for:
+- text-to-image, edits, and two-to-four reference compositions;
+- dry-run-first transport with exclusive output creation and session-scoped artifact provenance;
+- resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
+- optional apparel full-set preparation: one complete candidate set per unique normalized Vision `color_front` identity, followed by cross-set selection at a minimum 80% family-similarity gate.
 
-- text-to-image generation;
-- editing or restyling one existing image;
-- combining two to four reference images;
-- returning the finished file to a Telegram conversation as a document.
+Never use api-key billing, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. Never fall back to a different provider, API route, browser session, or model. never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use `send_message` with a document/file attachment; printing the path is not delivery evidence.
 
-Do not use it for API-key billing, private endpoints, browser or DOM automation, cookie extraction, or an unapproved provider/model fallback.
+## Boundaries
 
-## Prerequisites
+- A successful transport proves only that an artifact was obtained; it does not prove visual acceptance or a particular model identity.
+- Live image execution requires a fresh approval marker immediately before `--execute`.
+- The apparel browser executor is dry-run by default. Live browser execution requires an explicitly configured external adapter through `HEITUZ_BROWSER_ADAPTER_SCRIPT`; it never falls back to another browser, provider, or API.
+- Browser candidate tasks receive the same complete source inventory, role map, folder master, QC contract, and output inventory. Their sessions, ledgers, downloads, and candidate roots remain disjoint.
 
-- The official `codex` CLI must already be installed and authenticated for a ChatGPT subscription.
-- Do not inspect, copy, print, or modify Codex authentication files.
-- Do not initiate login, logout, OAuth, or account changes from this skill.
-- The output directory and every reference image must already exist.
+## Core procedures
 
-If authentication is unavailable or rejected, stop with a secret-safe error. Never fall back to an OpenAI API key or another provider.
-
-## How to Run
-
-The helper is dry-run by default and makes no network call. Output location follows a two-mode rule:
-
-- **Single generation** (no `--output`, no `--batch-dir`): saved to `~/Downloads/<slug>-<timestamp>.png`.
-- **Folder-based batch work**: pass `--batch-dir DIR`; outputs go to a dated subfolder `DIR/YYYYMMDD/<slug>-<timestamp>.png`.
-- **Explicit path**: pass `--output PATH` to override both defaults. `--output` and `--batch-dir` are mutually exclusive.
+### Single image or edit
 
 ```bash
-# Single generation → ~/Downloads
-python ~/.hermes/skills/HeiTuzimgGen2/scripts/codex_subscription_transport.py \
-  --prompt "A blue ceramic cup on linen"
+python scripts/codex_subscription_transport.py \
+  --prompt "A blue ceramic cup on natural linen"
 
-# Folder-based batch → <folder>/YYYYMMDD/
-python ~/.hermes/skills/HeiTuzimgGen2/scripts/codex_subscription_transport.py \
-  --prompt "A blue ceramic cup on linen" \
-  --batch-dir "$PWD/product-batch"
-```
-
-For an edit, repeat `--image` once per reference:
-
-```bash
-python ~/.hermes/skills/HeiTuzimgGen2/scripts/codex_subscription_transport.py \
+python scripts/codex_subscription_transport.py \
   --prompt "Keep the subject; change only the background to warm gray" \
   --image "$PWD/input.png" \
   --output "$PWD/output/edited.png"
 ```
 
-A live invocation requires both `--execute` and the fresh approval marker described in `references/execution-contract.md`. Stop and request approval immediately before that first live action. A prior general request to create an image is not the fresh approval marker.
+Both commands are dry-runs until `--execute` is supplied with the required fresh approval marker. See [references/execution-contract.md](references/execution-contract.md).
 
-## Quick Reference
+### Production batch
 
-| Need | Invocation |
-| --- | --- |
-| Generate (default → ~/Downloads) | `--prompt TEXT` |
-| Batch (folder subfolder) | `--prompt TEXT --batch-dir DIR` |
-| Explicit path | `--prompt TEXT --output PATH` |
-| Edit | add one `--image PATH` |
-| Combine references | add two to four `--image PATH` arguments |
-| Validate only | omit `--execute` |
-| Live generation | fresh approval, then `HERMES_IMAGE_LIVE_APPROVED=1 ... --execute` |
+Compile a self-contained prompt per cut, prepare a JSONL manifest, then dry-run:
 
-Outputs are PNG. Codex first writes the artifact under `~/.codex/generated_images/<session_id>/`; the helper verifies a newly created PNG and copies it to the requested output path. Existing outputs are never overwritten.
+```bash
+python scripts/codex_subscription_batch.py \
+  --manifest "$PWD/jobs.jsonl" \
+  --output-root "$PWD/product-batch" \
+  --workers auto
+```
 
-## Procedure
+The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Hermes subagents may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
-1. Resolve all input and output paths before execution.
-2. Confirm there are zero to four reference images and each is a regular file.
-3. Run the helper without `--execute` and inspect its JSON request summary.
-4. Confirm `transport` is `official-codex-cli-subscription`, reasoning is `medium`, and `model_identity_attested` is `false` unless supported evidence exists.
-5. For a live image, stop and request approval immediately before the call.
-6. After approval, make exactly one invocation with the approval marker and `--execute`.
-7. Verify the copied output exists and is non-empty; retain `source_artifact` as provenance.
-8. Describe the route as the official Codex CLI ChatGPT-subscription path. Codex selects the supported image model; never turn a requested label into an attestation or infer exact model identity from the agent model or filename.
-9. In Telegram, send the resulting image with `send_message` as a document/file attachment, preserving the original filename. Do not send a local path as plain text and call that delivery.
+### Apparel full-set preparation
 
-## Pitfalls
+Vision role records must provide an explicit `color_identity` for every `color_front`. The count is normalized with Unicode NFKC, collapsed whitespace, and case folding:
 
-- The skill name is a routing label, not proof that GPT Image 2 served an output.
-- `requested_model` remains `null` because forcing the agent model can break Codex imagegen routing. Only supported response evidence can establish `observed_model`.
-- Never retry with another model, provider, API endpoint, API key, browser session, or private backend without explicit authorization.
-- Never expose subprocess stdout/stderr on errors; it may contain account or session data.
-- Do not overwrite an existing output, create missing reference files, or accept more than four references.
-- Do not make a Vision call or Telegram call while validating this installation.
+- zero unique identities: `blocked`;
+- one unique identity: one task and `candidate-set-1/`;
+- four unique identities: four tasks and `candidate-set-1..4/`.
+
+Do not infer identity from filenames. Back/detail evidence does not add tasks. All N generators receive the complete source inventory and each task generates the full output inventory; selection may mix valid candidates across sets only when the entire resulting family clears the 80% gate. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
 
 ## Verification
 
-Run the local, network-free suite:
+All verification is network-free:
 
 ```bash
-python -m unittest discover \
-  -s ~/.hermes/skills/HeiTuzimgGen2/scripts \
-  -p 'test_*.py' -v
+python -m unittest discover -s scripts -p 'test_*.py' -v
+python -m py_compile scripts/*.py
 ```
 
-Then run one dry-run and inspect the JSON. Verification must not set `HERMES_IMAGE_LIVE_APPROVED`, pass `--execute`, invoke Vision, or contact Telegram.
+The test suite covers output collision handling, dry-run safety, session provenance, batch resume/retry/QC behavior, dynamic apparel task count, complete inventory, immutable source hashes, disjoint task paths, missing candidates, 80% selection, and delegation-cap packing.

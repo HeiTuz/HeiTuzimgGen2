@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "folder_id": "sample-knit-001",
+  "source_folder": "/portable/source",
+  "sources": [
+    "navy-front.png",
+    "navy-back.png",
+    "ivory-front.png",
+    "fabric-detail.png"
+  ],
+  "vision_role_map": [
+    {"file": "navy-front.png", "role": "color_front", "color_identity": "navy"},
+    {"file": "navy-back.png", "role": "main_back", "color_identity": "navy"},
+    {"file": "ivory-front.png", "role": "color_front", "color_identity": "ivory"},
+    {"file": "fabric-detail.png", "role": "fabric_detail", "color_identity": "navy"}
+  ],
+  "normalized_color_identity": ["navy", "ivory"],
+  "unique_color_count": 2,
+  "heituzmpw_folder_master": "Compile one coherent apparel family from the complete source inventory and validated Vision role map. Preserve source-supported construction, material, trim, print, color, scale, framing, and view relationships. Reconstruct only source-supported hidden areas.",
+  "qc_contract": "Accept only source-faithful apparel with required support removal, uniform #FFFFFF, no cast/contact shadow, no invented construction, exact visible copy, and at least 0.80 family similarity.",
+  "outputs": [
+    {
+      "id": "navy-front",
+      "filename": "navy-front.png",
+      "prompt": "IMAGE. Create a front apparel product cut for color navy. Product: crew-neck knit top. Use only the complete attached original source inventory and validated Vision role map as evidence. Preserve visible construction, silhouette, proportions, knit behavior, trim, print, and exact color. Remove mannequin, hanger, stand, rod, cord, clip, hand, prop, and all remnants. Use uniform #FFFFFF with no cast/contact shadow, halo, floor line, or gradient. Reconstruct only source-supported hidden areas; invent no seam, lining, label, panel, button, print, embroidery, pocket, fastener, or hem. Keep the series canvas, occupancy, centerline, scale, and lighting coherent."
+    },
+    {
+      "id": "ivory-front",
+      "filename": "ivory-front.png",
+      "prompt": "IMAGE. Create a front apparel product cut for color ivory. Product: crew-neck knit top. Use only the complete attached original source inventory and validated Vision role map as evidence. Preserve visible construction, silhouette, proportions, knit behavior, trim, print, and exact color. Remove mannequin, hanger, stand, rod, cord, clip, hand, prop, and all remnants. Use uniform #FFFFFF with no cast/contact shadow, halo, floor line, or gradient. Reconstruct only source-supported hidden areas; invent no seam, lining, label, panel, button, print, embroidery, pocket, fastener, or hem. Keep the series canvas, occupancy, centerline, scale, and lighting coherent."
+    }
+  ]
+}

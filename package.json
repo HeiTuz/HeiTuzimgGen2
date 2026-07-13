@@ -1,22 +1,28 @@
 {
   "name": "heituz-imggen2-skill",
-  "version": "1.1.0",
+  "version": "1.5.1",
   "private": false,
-  "description": "Install the HeiTuzimgGen2 Hermes skill.",
+  "description": "Provenance-safe ChatGPT subscription image production skill.",
   "license": "MIT",
+  "type": "module",
   "bin": {
-    "heituz-imggen2": "scripts/install.mjs"
+    "heituz-imggen2": "scripts/install.mjs",
+    "heituz-imggen2-install": "scripts/install.mjs"
   },
   "files": [
     "SKILL.md",
     "README.md",
     "LICENSE",
-    "references",
-    "scripts/codex_subscription_transport.py",
-    "scripts/test_skill_contract.py",
-    "scripts/test_codex_subscription_transport.py",
-    "scripts/install.mjs"
+    "references/**",
+    "scripts/*.py",
+    "scripts/*.mjs",
+    "scripts/fixtures/**"
   ],
+  "scripts": {
+    "test": "python3 -m unittest discover -s scripts -p 'test_*.py' -v && python3 -m py_compile scripts/*.py && node scripts/test_installer_privacy.mjs",
+    "smoke:install": "node scripts/install.mjs --target /tmp/HeiTuzimgGen2-install-smoke",
+    "smoke:runtime": "python3 -m unittest discover -s scripts -p 'test_*.py' -v"
+  },
   "engines": {
     "node": ">=18"
   }

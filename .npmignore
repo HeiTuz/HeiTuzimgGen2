@@ -1,0 +1,10 @@
+.DS_Store
+.gjc/
+.omx/
+docs-internal/
+node_modules/
+**/__pycache__/
+*.pyc
+*.bak
+*.bak-*
+*.tgz

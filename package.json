@@ -1,0 +1,23 @@
+{
+  "name": "heituz-imggen2-skill",
+  "version": "1.1.0",
+  "private": false,
+  "description": "Install the HeiTuzimgGen2 Hermes skill.",
+  "license": "MIT",
+  "bin": {
+    "heituz-imggen2": "scripts/install.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "LICENSE",
+    "references",
+    "scripts/codex_subscription_transport.py",
+    "scripts/test_skill_contract.py",
+    "scripts/test_codex_subscription_transport.py",
+    "scripts/install.mjs"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

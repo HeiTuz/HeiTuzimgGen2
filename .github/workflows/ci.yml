@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run network-free tests
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Smoke-test installer
+        run: |
+          target="$(mktemp -d)/HeiTuzimgGen2"
+          node scripts/install.mjs --target "$target"
+          test -f "$target/SKILL.md"
+          test -f "$target/scripts/codex_subscription_transport.py"

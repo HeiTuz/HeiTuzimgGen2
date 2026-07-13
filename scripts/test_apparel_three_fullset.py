@@ -73,11 +73,31 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
 
     def populate_candidates(self, coordinator, missing=None):
         folder_root = Path(coordinator["folder_root"])
+        shared = fullset.read_json(folder_root / "shared-folder-contract.json")
         missing = missing or set()
-        for set_name in coordinator["candidate_sets"]:
+        for task_number, set_name in enumerate(coordinator["candidate_sets"], start=1):
+            rows = {}
             for output in self.outputs:
-                if (set_name, output["id"]) not in missing:
-                    (folder_root / set_name / output["filename"]).write_bytes(f"{set_name}:{output['id']}".encode())
+                path = folder_root / set_name / output["filename"]
+                if (set_name, output["id"]) in missing:
+                    continue
+                path.write_bytes(f"{set_name}:{output['id']}".encode())
+                rows[output["id"]] = {
+                    "state": "completed",
+                    "filename": output["filename"],
+                    "sha256": fullset.sha256_file(path),
+                    "size": path.stat().st_size,
+                }
+            ledger = {
+                "schema_version": 1,
+                "task_id": f"task-{task_number}",
+                "candidate_set": set_name,
+                "shared_contract_sha256": coordinator["shared_contract_sha256"],
+                "outputs": rows,
+                "state": "complete" if len(rows) == len(self.outputs) else "partial",
+                "identical_output_inventory": [output["filename"] for output in self.outputs],
+            }
+            (folder_root / set_name / "task-ledger.json").write_text(json.dumps(ledger), encoding="utf-8")
 
     def report(self, coordinator, preferred=None, similarity=0.90, omit_assessments=None):
         preferred = preferred or {}
@@ -170,9 +190,9 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
 
     def test_dynamic_cross_set_selection_gate_missing_resume_and_provenance(self):
         coordinator = self.prepare()
-        self.populate_candidates(coordinator, missing={("candidate-set-1", "front-b")})
+        self.populate_candidates(coordinator)
         preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-4"}
-        report = self.report(coordinator, preferred=preferred, omit_assessments={("candidate-set-1", "front-b")})
+        report = self.report(coordinator, preferred=preferred)
         coordinator_path = Path(coordinator["folder_root"]) / "coordinator.json"
         result = fullset.select_candidates(coordinator_path, report)
         selected = {row["output_id"]: row["source_candidate_set"] for row in result["files"]}
@@ -229,6 +249,34 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         external_spec_path.write_text(json.dumps(spec), encoding="utf-8")
         with self.assertRaisesRegex(browser_task.BrowserTaskError, "disjoint set ownership"):
             browser_task.dry_run(external_spec_path)
+
+    def test_source_overlap_and_candidate_ledger_provenance_fail_closed(self):
+        overlap = self.contract(("navy",))
+        overlap["folder_id"] = self.source.name
+        overlap_path = self.root / "overlap-contract.json"
+        overlap_path.write_text(json.dumps(overlap), encoding="utf-8")
+        with self.assertRaisesRegex(fullset.ContractError, "overlaps read-only source"):
+            fullset.prepare_folder(overlap_path, self.root)
+
+        no_ledger = self.prepare(("navy", "ivory"))
+        self.populate_candidates(no_ledger)
+        no_ledger_report = self.report(no_ledger)
+        (Path(no_ledger["folder_root"]) / "candidate-set-1" / "task-ledger.json").unlink()
+        with self.assertRaisesRegex(fullset.ContractError, "ledger missing"):
+            fullset.select_candidates(Path(no_ledger["folder_root"]) / "coordinator.json", no_ledger_report)
+
+        tampered = self.prepare(("navy", "ivory", "red"))
+        self.populate_candidates(tampered)
+        tampered_report = self.report(tampered)
+        (Path(tampered["folder_root"]) / "candidate-set-1" / "front-a.png").write_bytes(b"forged")
+        with self.assertRaisesRegex(fullset.ContractError, "not ledger-verified"):
+            fullset.select_candidates(Path(tampered["folder_root"]) / "coordinator.json", tampered_report)
+
+        incomplete = self.prepare(("navy", "ivory", "red", "black"))
+        self.populate_candidates(incomplete, missing={("candidate-set-1", "front-a")})
+        incomplete_report = self.report(incomplete)
+        with self.assertRaisesRegex(fullset.ContractError, "ledger identity|ledger inventory"):
+            fullset.select_candidates(Path(incomplete["folder_root"]) / "coordinator.json", incomplete_report)
 
     def test_portable_producer_to_consumer_handoff_is_network_free(self):
         if MPW_ROOT is None or mpw_compiler is None:

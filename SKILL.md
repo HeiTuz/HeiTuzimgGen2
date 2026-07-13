@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the official Codex CLI using ChatGPT subscription authentication. Includes provenance-safe single-image transport, resumable JSONL batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.5.2
+version: 1.5.3
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -68,7 +68,7 @@ Vision role records must provide an explicit `color_identity` for every `color_f
 - one unique identity: one task and `candidate-set-1/`;
 - four unique identities: four tasks and `candidate-set-1..4/`.
 
-Do not infer identity from filenames. Back/detail evidence does not add tasks. All N generators receive the complete source inventory and each task generates the full output inventory; selection may mix valid candidates across sets only when the entire resulting family clears the 80% gate. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
+Do not infer identity from filenames. Back/detail evidence does not add tasks. All N generators receive the complete source inventory and each task generates the full output inventory. The selector admits only hash-verified outputs from a complete task ledger bound to its shared contract, task identity, candidate set, filename, and size; missing or altered outputs block the whole selection. Selection may mix valid candidates across sets only when the entire resulting family clears the 80% gate. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
 
 ## Verification
 

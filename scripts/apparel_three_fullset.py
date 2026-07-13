@@ -230,7 +230,20 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
 def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
     shared = validate_folder_contract(read_json(contract_path))
     candidate_sets = candidate_sets_for_shared_contract(shared)
-    folder_root = run_root.expanduser().resolve() / shared["folder_id"]
+    run_root = run_root.expanduser().resolve()
+    source_folder = Path(shared["source_folder"]).resolve()
+    folder_root = run_root / shared["folder_id"]
+    try:
+        folder_root.relative_to(source_folder)
+        overlaps_source = True
+    except ValueError:
+        try:
+            source_folder.relative_to(folder_root)
+            overlaps_source = True
+        except ValueError:
+            overlaps_source = False
+    if overlaps_source:
+        raise ContractError("run root overlaps read-only source folder")
     folder_root.mkdir(parents=True, exist_ok=True)
     shared_sha = sha256_bytes(_canonical(shared))
     package_path = folder_root / "shared-folder-contract.json"
@@ -390,12 +403,67 @@ def _resume_selected(selected_root: Path, outputs: list[dict[str, str]]) -> dict
     return provenance
 
 
+def _verified_candidate_outputs(
+    folder_root: Path,
+    coordinator: dict[str, Any],
+    shared: dict[str, Any],
+    candidate_sets: tuple[str, ...],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    expected_sha = coordinator.get("shared_contract_sha256")
+    if sha256_bytes(_canonical(shared)) != expected_sha:
+        raise ContractError("shared folder contract does not match coordinator hash")
+    expected_files = [output["filename"] for output in shared["outputs"]]
+    expected_ids = {output["id"] for output in shared["outputs"]}
+    verified: dict[str, dict[str, dict[str, Any]]] = {}
+    for task_number, set_name in enumerate(candidate_sets, start=1):
+        candidate_root = folder_root / set_name
+        ledger_path = candidate_root / "task-ledger.json"
+        if not ledger_path.is_file() or ledger_path.is_symlink():
+            raise ContractError(f"candidate task ledger missing for {set_name}")
+        ledger = read_json(ledger_path)
+        if not isinstance(ledger, dict):
+            raise ContractError(f"candidate task ledger is invalid for {set_name}")
+        if (
+            ledger.get("schema_version") != SCHEMA_VERSION
+            or ledger.get("task_id") != f"task-{task_number}"
+            or ledger.get("candidate_set") != set_name
+            or ledger.get("shared_contract_sha256") != expected_sha
+            or ledger.get("state") != "complete"
+            or ledger.get("identical_output_inventory") != expected_files
+        ):
+            raise ContractError(f"candidate task ledger identity is invalid for {set_name}")
+        rows = ledger.get("outputs")
+        if not isinstance(rows, dict) or set(rows) != expected_ids:
+            raise ContractError(f"candidate task ledger inventory is incomplete for {set_name}")
+        set_outputs: dict[str, dict[str, Any]] = {}
+        for output in shared["outputs"]:
+            row = rows.get(output["id"])
+            source = candidate_root / output["filename"]
+            if (
+                not isinstance(row, dict)
+                or row.get("state") != "completed"
+                or row.get("filename") != output["filename"]
+                or not isinstance(row.get("sha256"), str)
+                or isinstance(row.get("size"), bool)
+                or not isinstance(row.get("size"), int)
+                or not source.is_file()
+                or source.is_symlink()
+                or source.stat().st_size != row["size"]
+                or sha256_file(source) != row["sha256"]
+            ):
+                raise ContractError(f"candidate output is not ledger-verified for {set_name}/{output['id']}")
+            set_outputs[output["id"]] = {"path": source, "sha256": row["sha256"], "size": row["size"]}
+        verified[set_name] = set_outputs
+    return verified
+
+
 def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, Any]:
     coordinator = read_json(coordinator_path)
     folder_root = Path(coordinator["folder_root"])
     shared = read_json(folder_root / "shared-folder-contract.json")
     candidate_sets = _coordinator_candidate_sets(coordinator, shared)
     outputs = shared["outputs"]
+    verified_candidates = _verified_candidate_outputs(folder_root, coordinator, shared, candidate_sets)
     selected_root = folder_root / "selected"
     resumed = _resume_selected(selected_root, outputs)
     if resumed is not None:
@@ -414,13 +482,14 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
         per_output = assessments.get(output["id"], {}).get("candidates", {})
         valid = []
         for set_name in candidate_sets:
-            source = folder_root / set_name / output["filename"]
+            candidate = verified_candidates[set_name][output["id"]]
+            source = candidate["path"]
             entry = per_output.get(set_name)
-            if not source.is_file() or not isinstance(entry, dict):
+            if not isinstance(entry, dict):
                 continue
             fidelity, gates = _candidate_quality(entry)
             if gates:
-                valid.append({"set": set_name, "path": source, "assessment": entry, "fidelity": fidelity})
+                valid.append({"set": set_name, "path": source, "sha256": candidate["sha256"], "size": candidate["size"], "assessment": entry, "fidelity": fidelity})
         if not valid:
             raise ContractError(f"no valid candidate for output {output['id']}")
         options.append(valid)
@@ -455,18 +524,22 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
     try:
         for output, chosen in zip(outputs, combo):
             target = stage / output["filename"]
+            if chosen["path"].stat().st_size != chosen["size"] or sha256_file(chosen["path"]) != chosen["sha256"]:
+                raise ContractError("candidate changed after ledger verification")
             with chosen["path"].open("rb") as src, target.open("xb") as dst:
                 shutil.copyfileobj(src, dst)
+            if target.stat().st_size != chosen["size"] or sha256_file(target) != chosen["sha256"]:
+                raise ContractError("selected copy does not match verified candidate")
             alternatives = []
             per_output = assessments[output["id"]].get("candidates", {})
             for set_name in candidate_sets:
                 if set_name == chosen["set"]:
                     continue
                 alternative = per_output.get(set_name)
-                source = folder_root / set_name / output["filename"]
+                available = isinstance(alternative, dict) and output["id"] in verified_candidates[set_name]
                 alternatives.append({
                     "candidate_set": set_name,
-                    "available": bool(source.is_file() and isinstance(alternative, dict)),
+                    "available": available,
                     "vision_verdict": alternative.get("vision_verdict", "") if isinstance(alternative, dict) else "",
                 })
             task_number = chosen["set"].rsplit("-", 1)[-1]

@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the official Codex CLI using ChatGPT subscription authentication. Includes provenance-safe single-image transport, resumable JSONL batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.5.1
+version: 1.5.2
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]

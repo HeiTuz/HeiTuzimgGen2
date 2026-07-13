@@ -6,7 +6,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const source = realpathSync(join(dirname(fileURLToPath(import.meta.url)), ".."));
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 const targetIndex = args.indexOf("--target");
 if (targetIndex !== -1 && !args[targetIndex + 1]) {
   console.error("--target requires a directory path");

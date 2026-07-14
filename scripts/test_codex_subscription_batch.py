@@ -128,7 +128,8 @@ class BatchManifestTests(unittest.TestCase):
                     batch.load_manifest(manifest, root / "out")
 
     def test_output_traversal_and_absolute_are_rejected(self):
-        for output in ("../escape.png", "/tmp/absolute.png"):
+        absolute_output = str(Path(tempfile.gettempdir()) / "absolute.png")
+        for output in ("../escape.png", absolute_output):
             with self.subTest(output=output), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp); manifest = root / "jobs.jsonl"
                 write_jsonl(manifest, [{"id": "a", "prompt": "one", "output_path": output}])

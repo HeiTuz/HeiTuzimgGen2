@@ -53,14 +53,18 @@ try {
   const manifestData = JSON.parse(fs.readFileSync(manifest, "utf8"));
   assert.equal(manifestData.vision_qc_requested, "auto");
   assert.equal(manifestData.vision_qc_mode, "auto");
-  const updater = invoke(["update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  const installedCli = path.join(temp, "config", "heituz", "heituz.mjs");
+  const invokeInstalled = (cliArgs) => process.platform === "win32"
+    ? invoke([installedCli, ...cliArgs], { HEITUZ_TEST_PLATFORM: "linux" }, process.execPath)
+    : invoke(cliArgs, { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  const updater = invokeInstalled(["update", "--dry-run"]);
   assert.match(updater, /HeiTuzImgGen2 update/);
   assert.match(updater, /--vision-qc.*auto/);
   assert.match(updater, /HeiTuzMPW update/);
   assert.doesNotMatch(updater, /\/Users\/eusin/);
-  const visionQcSetup = invoke(["vision-qc", "setup"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  const visionQcSetup = invokeInstalled(["vision-qc", "setup"]);
   assert.match(visionQcSetup, /host's default Vision model/);
-  const visionQcStatus = invoke(["vision-qc", "status"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  const visionQcStatus = invokeInstalled(["vision-qc", "status"]);
   assert.deepEqual(JSON.parse(visionQcStatus), { vision_qc: "auto", reviewer: "host-default-vision" });
   // Offline/test installs without --register must not touch global state.
   const manifestBefore = fs.readFileSync(manifest, "utf8");

@@ -13,9 +13,19 @@ function invoke(args, env = {}, command = process.execPath) {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: "utf8",
-    env: { ...process.env, HOME: temp, XDG_CONFIG_HOME: path.join(temp, "config"), ...env },
+    env: {
+      ...process.env,
+      HOME: temp,
+      USERPROFILE: temp,
+      XDG_CONFIG_HOME: path.join(temp, "config"),
+      ...env,
+    },
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(
+    result.status,
+    0,
+    result.stderr || result.stdout || result.error?.message || "child process failed",
+  );
   return result.stdout;
 }
 
@@ -33,7 +43,9 @@ try {
   assert.equal(fs.existsSync(launcher), true);
   assert.match(fs.readFileSync(path.join(temp, ".profile"), "utf8"), /heituz user bin/);
   assert.match(fs.readFileSync(path.join(temp, ".zprofile"), "utf8"), /heituz user bin/);
-  const updater = invoke(["update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  const updater = process.platform === "win32"
+    ? invoke([path.join(temp, "config", "heituz", "heituz.mjs"), "update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" })
+    : invoke(["update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
   assert.match(updater, /HeiTuzImgGen2 update/);
   assert.match(updater, /HeiTuzMPW update/);
   assert.doesNotMatch(updater, /\/Users\/eusin/);

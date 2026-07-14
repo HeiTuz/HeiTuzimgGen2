@@ -58,6 +58,31 @@ python scripts/consume_image_handoff.py request.json \
 
 This adapter validates [contracts/v1/image-production-handoff.schema.json](contracts/v1/image-production-handoff.schema.json), resolves relative input paths from the handoff file, keeps the output under `--output-root`, and delegates to the same dry-run-first transport. HTTPS input references must first be materialized as relative local files. The handoff must never contain credentials, approval state, session identifiers, or machine/worker routing.
 
+### Folder input batch
+
+When the user supplies an accessible folder path, inventory it with the folder helper before invoking the production batch runner:
+
+```bash
+python scripts/folder_batch_prepare.py \
+  --input-dir "$PWD/product-sources" \
+  --prompt "Final compiled IMAGE edit prompt"
+```
+
+With no `--output-root`, the helper creates a marked job under the canonical OS-native `HeiTuzImgGen2` temporary root. Temporary jobs default to 24-hour retention and are removed when `scripts/cleanup_temp_outputs.py` runs; schedule that script for unattended cleanup. The cleaner rejects symlink/reparse roots, verifies Windows ownership before changing any existing root, applies a current-user/SYSTEM-only Windows DACL (or mode `0700` ownership checks on POSIX), preserves unknown or unmarked children, serializes cleanup processes with a root lock, coordinates atomically with process-held job activity locks, treats junction/reparse descendants as leaves, and deletes only expired marked `single-*` or `folder-*` jobs. Quarantine names and cleanup claims are bound to the exact canonical job ID; valid claims abandoned before rename can be recovered after five minutes, while malformed or ambiguous claims are preserved. Stale batch lock files do not block expiry. Temporary jobs are suitable for local work and Discord delivery staging, not permanent storage. When the requester provides an accessible destination outside the managed temporary root, pass `--output-root` and preserve that destination until the requester removes it:
+
+```bash
+python scripts/folder_batch_prepare.py \
+  --input-dir "$PWD/product-sources" \
+  --output-root "$PWD/product-results" \
+  --prompt "Final compiled IMAGE edit prompt"
+```
+
+When an explicit persistent destination is used, the helper stores the batch manifest under `<output-root>/.heituzimggen2-manifests/` so resume, approval verification, QC, and retry records do not expire separately from the results. With temporary outputs, the manifest remains in the same marked temporary job and expires with it.
+
+The helper recursively inventories up to 500 JPEG, PNG, and WebP inputs (5 GiB total; 512 MiB per reference), rejects every symlink, junction, or reparse-point entry instead of following it, excludes an output subtree only when that subtree is inside the source folder, never mutates originals, and writes one absolute source reference plus one unique relative PNG output per manifest job. It does not copy sources during preparation, so keep them available and unchanged through approval. Immediately before each live transport call, the batch runner copies the approved bytes through an open source handle into a current-user-private managed snapshot, verifies that snapshot against the manifest hash/size evidence, and passes only snapshot paths to Codex; changed bytes fail closed and successful snapshots expire under the normal temporary retention policy. Review the helper's JSON summary, then dry-run the emitted manifest before live approval. A gateway request may use only a path accessible to the Hermes host and authorized for that requester; never claim access to an employee-local path merely because its spelling was supplied.
+
+For Discord delivery, keep temporary outputs until the attachment upload succeeds. Return small result sets as file attachments in the requesting channel or thread; package large batches with the deterministic summary. A printed local path is not delivery evidence. Explicit shared-folder destinations are not auto-cleaned.
+
 ### Production batch
 
 Compile a self-contained prompt per cut, prepare a JSONL manifest, then dry-run:

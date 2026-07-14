@@ -10,7 +10,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "heituzimggen2-install-"));
 
 function run(command, args) {
-  const result = spawnSync(command, args, { cwd: root, encoding: "utf8" });
+  const result = spawnSync(command, args, {
+    cwd: root,
+    encoding: "utf8",
+  });
   assert.equal(result.status, 0, `${command} failed: ${result.stderr || result.stdout}`);
   return result.stdout;
 }
@@ -31,7 +34,10 @@ try {
   assert.equal(fs.existsSync(path.join(destination, "contracts", "v1", "image-production-handoff.schema.json")), true);
   assert.equal(hasExcludedPath(destination), false, "installer copied excluded local state");
 
-  const packed = JSON.parse(run("npm", ["pack", "--dry-run", "--json"]));
+  const packedOutput = process.platform === "win32"
+    ? run("cmd.exe", ["/d", "/s", "/c", "npm.cmd pack --dry-run --json"])
+    : run("npm", ["pack", "--dry-run", "--json"]);
+  const packed = JSON.parse(packedOutput);
   const names = packed[0].files.map((file) => file.path);
   assert.equal(names.includes("contracts/v1/image-production-handoff.schema.json"), true,
     "npm package omits the public handoff schema");

@@ -51,6 +51,6 @@ For text recovery, tighten role, position, and copy precision first; use a large
 
 ## Output and delivery
 
-The helper refuses collisions and missing output directories. It accepts zero to four existing reference files and does not mutate them.
+The helper refuses collisions and missing explicit output directories. It accepts zero to four existing reference files and does not mutate them. An implicit single-image destination uses a marked job under the canonical OS-native `HeiTuzImgGen2` temporary root instead of `~/Downloads`; explicit `--output` and `--batch-dir` destinations must remain outside that managed root and are persistent and authoritative. Temporary jobs default to 24-hour retention and are removed only by the separately invoked cleanup script; dry-runs never trigger cleanup.
 
-For Telegram delivery, use a supported messaging tool with the generated image as a document/file attachment and retain its filename. A successful API response is delivery evidence; printing the path is not.
+For gateway delivery, use a supported messaging tool or the platform adapter with the generated image as a document/file attachment and retain its filename. Keep the staged file until upload success is confirmed. A successful platform response is delivery evidence; printing the path is not. Small Discord results return to the requesting channel or thread, while large folder batches should be archived with their batch summary before attachment. Explicit requester-selected folders are not auto-deleted.

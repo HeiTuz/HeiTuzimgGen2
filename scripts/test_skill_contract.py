@@ -5,6 +5,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import output_lifecycle
+
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = Path(__file__).with_name("codex_subscription_transport.py")
@@ -147,13 +149,17 @@ class SkillContractTests(unittest.TestCase):
 class OutputPathTests(unittest.TestCase):
     def test_explicit_output_wins(self):
         target = Path("/tmp/explicit-output.png")
-        self.assertEqual(transport.resolve_output("blue cup", target, None), target)
+        self.assertEqual(transport.resolve_output("blue cup", target, None), target.absolute())
 
-    def test_single_generation_defaults_to_downloads(self):
-        resolved = transport.resolve_output("A blue ceramic cup!", None, None)
-        self.assertEqual(resolved.parent, transport.DOWNLOADS_DIR)
-        self.assertTrue(resolved.name.startswith("a-blue-ceramic-cup-"))
-        self.assertTrue(resolved.name.endswith(".png"))
+    def test_single_generation_defaults_to_os_temp_job(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            output_lifecycle.tempfile, "gettempdir", return_value=tmp
+        ):
+            resolved = transport.resolve_output("A blue ceramic cup!", None, None)
+            self.assertEqual(resolved.parent.parent, (Path(tmp) / output_lifecycle.DEFAULT_TEMP_DIRNAME).resolve())
+            self.assertTrue(resolved.parent.name.startswith("single-"))
+            self.assertTrue(resolved.name.startswith("a-blue-ceramic-cup-"))
+            self.assertTrue(resolved.name.endswith(".png"))
 
     def test_single_call_batch_dir_uses_dated_subfolder(self):
         with tempfile.TemporaryDirectory() as tmp:

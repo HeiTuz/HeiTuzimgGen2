@@ -1,4 +1,7 @@
+import contextlib
 import importlib.util
+import io
+import json
 import sys
 from types import SimpleNamespace
 import os
@@ -11,6 +14,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 import codex_cli_resolver as resolver
+import output_lifecycle
 
 MODULE_PATH = SCRIPTS / "codex_subscription_transport.py"
 SPEC = importlib.util.spec_from_file_location("codex_subscription_transport", MODULE_PATH)
@@ -178,6 +182,48 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
         self.assertNotIn("--model", result["command"])
         self.assertNotIn("--enable", result["command"])
         self.assertNotIn("draw a blue square", " ".join(result["command"]))
+
+    def test_default_output_uses_dedicated_os_temp_job(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            output_lifecycle.tempfile, "gettempdir", return_value=tmp
+        ):
+            output = transport.resolve_output("A product on white", None, None)
+            self.assertEqual(output.suffix, ".png")
+            self.assertEqual(output.parent.parent, (Path(tmp) / output_lifecycle.DEFAULT_TEMP_DIRNAME).resolve())
+            self.assertTrue(output.parent.name.startswith("single-"))
+            self.assertTrue((output.parent / output_lifecycle.JOB_MARKER_NAME).is_file())
+
+    def test_explicit_outputs_inside_managed_temp_root_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            output_lifecycle.tempfile, "gettempdir", return_value=tmp
+        ):
+            root = output_lifecycle.temp_root()
+            with self.assertRaisesRegex(ValueError, "temporary root"):
+                transport.resolve_output("product", root / "persistent.png", None)
+            with self.assertRaisesRegex(ValueError, "temporary root"):
+                transport.resolve_output("product", None, root / "persistent-batch")
+
+    def test_main_reports_lifecycle_errors_as_json(self):
+        stderr = io.StringIO()
+        with patch.object(transport, "resolve_output", side_effect=ValueError("unsafe root")), \
+                contextlib.redirect_stderr(stderr):
+            status = transport.main(["--prompt", "product"])
+        self.assertEqual(status, 2)
+        self.assertEqual(json.loads(stderr.getvalue()), {"error": "unsafe root"})
+
+    def test_main_reports_runtime_collision_errors_as_json(self):
+        stderr = io.StringIO()
+        with patch.object(
+            transport,
+            "resolve_output",
+            side_effect=RuntimeError("collision exhaustion"),
+        ), contextlib.redirect_stderr(stderr):
+            status = transport.main(["--prompt", "product"])
+        self.assertEqual(status, 2)
+        self.assertEqual(
+            json.loads(stderr.getvalue()),
+            {"error": "collision exhaustion"},
+        )
 
     def test_variadic_image_arguments_are_terminated_before_prompt(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(

@@ -1,8 +1,11 @@
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import threading
 import time
@@ -12,6 +15,8 @@ from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
+import output_lifecycle
+
 MODULE_PATH = SCRIPTS / "codex_subscription_batch.py"
 SPEC = importlib.util.spec_from_file_location("codex_subscription_batch", MODULE_PATH)
 batch = importlib.util.module_from_spec(SPEC)
@@ -171,6 +176,96 @@ class BatchManifestTests(unittest.TestCase):
             with self.assertRaises(batch.BatchError):
                 batch.load_manifest(manifest, out)
 
+    @unittest.skipUnless(os.name == "nt", "Windows junction behavior")
+    def test_output_junction_parent_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "out"
+            outside = root / "outside"
+            out.mkdir()
+            outside.mkdir()
+            junction = out / "linked"
+            result = subprocess.run(
+                ["cmd.exe", "/c", "mklink", "/J", str(junction), str(outside)],
+                capture_output=True,
+                text=True,
+                errors="replace",
+            )
+            if result.returncode != 0:
+                self.skipTest("Unable to create a Windows junction")
+            manifest = root / "jobs.jsonl"
+            write_jsonl(manifest, [{
+                "id": "a",
+                "prompt": "one",
+                "output_path": "linked/a.png",
+            }])
+
+            with self.assertRaisesRegex(batch.BatchError, "junction|reparse"):
+                batch.load_manifest(manifest, out)
+
+    def test_reference_drift_is_rejected_immediately_before_transport(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = root / "ref.png"
+            ref.write_bytes(b"approved")
+            manifest = root / "jobs.jsonl"
+            write_jsonl(manifest, [{
+                "id": "a",
+                "prompt": "one",
+                "output_path": "a.png",
+                "images": [str(ref)],
+            }])
+            jobs, _ = batch.load_manifest(manifest, root / "out")
+            ref.write_bytes(b"changed")
+
+            with self.assertRaisesRegex(batch.BatchError, "Reference drift"):
+                batch.verify_reference_evidence(jobs[0])
+
+    def test_transport_uses_private_approved_byte_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            output_lifecycle.tempfile,
+            "gettempdir",
+            return_value=tmp,
+        ):
+            root = Path(tmp)
+            ref = root / "ref.png"
+            ref.write_bytes(b"approved-bytes")
+            manifest = root / "jobs.jsonl"
+            write_jsonl(manifest, [{
+                "id": "a",
+                "prompt": "one",
+                "output_path": "a.png",
+                "images": [str(ref)],
+            }])
+            jobs, _ = batch.load_manifest(manifest, root / "out")
+
+            with batch.snapshotted_references(jobs[0]) as transport_job:
+                snapshot = transport_job.images[0]
+                self.assertNotEqual(snapshot, ref.resolve())
+                self.assertEqual(snapshot.read_bytes(), b"approved-bytes")
+                ref.write_bytes(b"changed-after-snapshot")
+                self.assertEqual(snapshot.read_bytes(), b"approved-bytes")
+                self.assertTrue(
+                    snapshot.is_relative_to(output_lifecycle.temp_root())
+                )
+
+    def test_reference_size_limit_is_enforced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = root / "large.png"
+            ref.write_bytes(b"1234")
+            manifest = root / "jobs.jsonl"
+            write_jsonl(manifest, [{
+                "id": "a",
+                "prompt": "one",
+                "output_path": "a.png",
+                "images": [str(ref)],
+            }])
+
+            with patch.object(batch, "MAX_REFERENCE_BYTES", 3):
+                with self.assertRaisesRegex(batch.BatchError, "byte safety limit"):
+                    batch.load_manifest(manifest, root / "out")
+
     def test_more_than_four_references_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); refs = []
@@ -229,6 +324,17 @@ class BatchExecutionTests(unittest.TestCase):
             batch.reconcile_qc(manifest, out, qc_path, ledger_path=kwargs.get("ledger_path"))
             summary = self.raw_approved_run(manifest, out, runner, **kwargs)
         return summary
+
+    def test_main_reports_filesystem_errors_as_json(self):
+        stderr = io.StringIO()
+        with patch.object(batch, "run_batch", side_effect=OSError("disk denied")), contextlib.redirect_stderr(stderr):
+            status = batch.main([
+                "--manifest", "missing.jsonl",
+                "--output-root", "output",
+            ])
+
+        self.assertEqual(status, 2)
+        self.assertEqual(json.loads(stderr.getvalue()), {"error": "disk denied"})
 
     def test_dry_run_does_not_call_transport_or_create_output(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -386,6 +492,32 @@ class BatchExecutionTests(unittest.TestCase):
             with patch.dict(os.environ, {batch.BATCH_APPROVAL_ENV: changed_approval}, clear=False):
                 with self.assertRaisesRegex(batch.BatchError, "Manifest drift"):
                     batch.run_batch(manifest, out, execute=True, runner=FakeRunner())
+
+    def test_managed_batch_lock_uses_live_activity_and_stale_file_expires(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            output_lifecycle.tempfile,
+            "gettempdir",
+            return_value=tmp,
+        ):
+            job = output_lifecycle.create_job_dir("folder")
+            output = job / "outputs"
+            with batch.batch_lock(output):
+                active = list(job.glob(f"{output_lifecycle.ACTIVE_MARKER_PREFIX}*"))
+                self.assertEqual(len(active), 1)
+            self.assertEqual(
+                list(job.glob(f"{output_lifecycle.ACTIVE_MARKER_PREFIX}*")),
+                [],
+            )
+            self.assertTrue((output / batch.LOCK_NAME).is_file())
+            for item in sorted(job.rglob("*"), reverse=True):
+                if not item.is_symlink():
+                    os.utime(item, (100, 100))
+            os.utime(job, (100, 100))
+
+            removed = output_lifecycle.cleanup_expired(retention_hours=1, now=10_000)
+
+            self.assertEqual(removed, [job.absolute()])
+            self.assertFalse(job.exists())
 
     def test_output_root_lock_rejects_concurrent_owner(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -19,9 +19,13 @@ import subprocess
 import sys
 from typing import Mapping, Sequence
 from codex_cli_resolver import CodexResolutionError, ResolvedCodex, resolve_codex_command
+from output_lifecycle import (
+    create_job_dir,
+    job_activity_for_path,
+    validate_persistent_destination,
+)
 
 GENERATED_IMAGES_DIR = Path.home() / ".codex" / "generated_images"
-DOWNLOADS_DIR = Path.home() / "Downloads"
 REASONING_EFFORT = "medium"
 APPROVAL_ENV = "HERMES_IMAGE_LIVE_APPROVED"
 CLI_TIMEOUT_SECONDS = 900
@@ -64,19 +68,19 @@ def _dedupe(path: Path) -> Path:
 
 
 def resolve_output(prompt: str, output: Path | None, batch_dir: Path | None) -> Path:
-    """Single generation defaults to ~/Downloads; batch work uses a dated subfolder.
+    """Use explicit destinations when supplied; otherwise stage in OS temp storage.
 
     An explicit --output always wins. --output and --batch-dir are mutually exclusive
-    (enforced by the caller). Directories are created so validation can proceed.
+    (enforced by the caller). Implicit outputs use a dedicated short-lived job directory.
     """
     if output is not None:
-        return output.expanduser()
+        return validate_persistent_destination(output)
     filename = f"{_slug(prompt)}-{_timestamp()}.png"
     if batch_dir is not None:
-        base = batch_dir.expanduser() / datetime.now().strftime("%Y%m%d")
+        base = validate_persistent_destination(batch_dir) / datetime.now().strftime("%Y%m%d")
+        base.mkdir(parents=True, exist_ok=True)
     else:
-        base = DOWNLOADS_DIR
-    base.mkdir(parents=True, exist_ok=True)
+        base = create_job_dir("single")
     return _dedupe(base / filename)
 
 
@@ -532,52 +536,53 @@ def run(
         raise TransportError(
             f"Live generation is blocked. Obtain approval immediately before the call, then set {APPROVAL_ENV}=1 for that invocation."
         )
-    before = generated_pngs()
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=output.parent,
-            text=True,
-            capture_output=True,
-            timeout=CLI_TIMEOUT_SECONDS,
-            check=False,
-            env=os.environ.copy(),
+    with job_activity_for_path(output):
+        before = generated_pngs()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=output.parent,
+                text=True,
+                capture_output=True,
+                timeout=CLI_TIMEOUT_SECONDS,
+                check=False,
+                env=os.environ.copy(),
+            )
+        except subprocess.TimeoutExpired:
+            raise TransportError(
+                f"Codex CLI timed out after {CLI_TIMEOUT_SECONDS}s; no output retained."
+            ) from None
+        cli_output = f"{completed.stdout}\n{completed.stderr}"
+        if completed.returncode != 0:
+            category = classify_cli_failure(completed.stdout, completed.stderr)
+            raise TransportError(
+                f"Codex CLI failed with exit code {completed.returncode}; category={category}; "
+                "any artifact from the failed invocation was rejected; raw output withheld to protect secrets."
+            )
+        session_ids = session_ids_in_cli(cli_output)
+        generated = select_fresh_session_png(cli_output, before)
+        if generated is None:
+            session_reason = (
+                "no session/thread ID was reported"
+                if not session_ids
+                else "no fresh PNG was created in a reported session directory"
+            )
+            raise TransportError(
+                "Codex CLI completed but did not produce a fresh session-scoped PNG; "
+                f"{session_reason}."
+            )
+        copied_bytes = copy_png_exclusive(generated, output)
+        summary.update(
+            {
+                "live": True,
+                "transport_state": "succeeded",
+                "bytes": copied_bytes,
+                "source_artifact": str(generated),
+                "cli_exit_code": completed.returncode,
+                "warning": None,
+            }
         )
-    except subprocess.TimeoutExpired:
-        raise TransportError(
-            f"Codex CLI timed out after {CLI_TIMEOUT_SECONDS}s; no output retained."
-        ) from None
-    cli_output = f"{completed.stdout}\n{completed.stderr}"
-    if completed.returncode != 0:
-        category = classify_cli_failure(completed.stdout, completed.stderr)
-        raise TransportError(
-            f"Codex CLI failed with exit code {completed.returncode}; category={category}; "
-            "any artifact from the failed invocation was rejected; raw output withheld to protect secrets."
-        )
-    session_ids = session_ids_in_cli(cli_output)
-    generated = select_fresh_session_png(cli_output, before)
-    if generated is None:
-        session_reason = (
-            "no session/thread ID was reported"
-            if not session_ids
-            else "no fresh PNG was created in a reported session directory"
-        )
-        raise TransportError(
-            "Codex CLI completed but did not produce a fresh session-scoped PNG; "
-            f"{session_reason}."
-        )
-    copied_bytes = copy_png_exclusive(generated, output)
-    summary.update(
-        {
-            "live": True,
-            "transport_state": "succeeded",
-            "bytes": copied_bytes,
-            "source_artifact": str(generated),
-            "cli_exit_code": completed.returncode,
-            "warning": None,
-        }
-    )
-    return summary
+        return summary
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -595,7 +600,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         output = resolve_output(args.prompt, args.output, args.batch_dir)
         print(json.dumps(run(args.prompt, output, args.image, args.execute, args.codex_bin), indent=2))
-    except TransportError as exc:
+    except (TransportError, ValueError, OSError, RuntimeError) as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2
     return 0

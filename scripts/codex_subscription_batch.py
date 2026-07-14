@@ -18,7 +18,7 @@ import hashlib
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -27,6 +27,12 @@ import time
 from typing import Callable, Mapping, Sequence
 
 import codex_subscription_transport as transport
+from output_lifecycle import (
+    create_job_dir,
+    is_symlink_or_reparse,
+    job_activity_for_path,
+    protected_directory_tree,
+)
 
 BATCH_APPROVAL_ENV = "HERMES_IMAGE_BATCH_APPROVAL_SHA256"
 LEDGER_NAME = ".heituzimggen2-batch.json"
@@ -34,6 +40,7 @@ LOCK_NAME = ".heituzimggen2-batch.lock"
 SUMMARY_JSON_NAME = "batch-summary.json"
 SUMMARY_MD_NAME = "batch-summary.md"
 SCHEMA_VERSION = 1
+MAX_REFERENCE_BYTES = 512 * 1024 * 1024
 VALID_STATUSES = {"pending", "running", "succeeded", "failed", "qc_failed", "skipped"}
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -92,10 +99,20 @@ def _reject_symlink_components(root: Path, candidate: Path) -> None:
     current = root
     for part in candidate.relative_to(root).parts[:-1]:
         current = current / part
-        if current.exists() and current.is_symlink():
-            raise BatchError(f"Output parent contains a symlink: {current}")
-    if candidate.exists() and candidate.is_symlink():
-        raise BatchError(f"Output path is a symlink: {candidate}")
+        if (current.exists() or current.is_symlink()) and is_symlink_or_reparse(current):
+            raise BatchError(f"Output parent contains a symlink, junction, or reparse point: {current}")
+    if (candidate.exists() or candidate.is_symlink()) and is_symlink_or_reparse(candidate):
+        raise BatchError(f"Output path is a symlink, junction, or reparse point: {candidate}")
+
+
+def _reject_reparse_path(candidate: Path, *, label: str) -> None:
+    absolute = candidate.expanduser().absolute()
+    current = Path(absolute.anchor)
+    parts = absolute.parts[1:] if absolute.anchor else absolute.parts
+    for part in parts:
+        current = current / part
+        if (current.exists() or current.is_symlink()) and is_symlink_or_reparse(current):
+            raise BatchError(f"{label} contains a symlink, junction, or reparse point: {current}")
 
 
 def _load_jsonl(path: Path) -> list[tuple[int, dict[str, object]]]:
@@ -174,11 +191,20 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
             ref_input = Path(raw).expanduser()
             if not ref_input.is_absolute():
                 ref_input = path.parent / ref_input
-            if ref_input.is_symlink():
-                raise BatchError(f"Reference must be a non-symlink regular file for {job_id}: {raw}")
+            _reject_reparse_path(ref_input, label=f"Reference for {job_id}")
+            if (
+                ref_input.exists() or ref_input.is_symlink()
+            ) and is_symlink_or_reparse(ref_input):
+                raise BatchError(
+                    f"Reference must be a non-reparse regular file for {job_id}: {raw}"
+                )
             ref = ref_input.resolve(strict=False)
             if not ref.is_file():
                 raise BatchError(f"Reference must be a non-symlink regular file for {job_id}: {raw}")
+            if ref.stat().st_size > MAX_REFERENCE_BYTES:
+                raise BatchError(
+                    f"Reference exceeds the {MAX_REFERENCE_BYTES}-byte safety limit for {job_id}: {raw}"
+                )
             images.append(ref)
         promotional = record.get("promotional", record.get("cut_type") == "promo_poster")
         inferred_text = bool(record.get("korean_copy") or record.get("labels") or "Text-in-image:" in prompt)
@@ -298,7 +324,7 @@ def load_ledger(path: Path) -> dict[str, object]:
 
 
 @contextlib.contextmanager
-def batch_lock(output_root: Path):
+def _batch_file_lock(output_root: Path):
     output_root.mkdir(parents=True, exist_ok=True)
     lock_path = output_root / LOCK_NAME
     handle = lock_path.open("a+", encoding="utf-8")
@@ -331,6 +357,13 @@ def batch_lock(output_root: Path):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
         finally:
             handle.close()
+
+
+@contextlib.contextmanager
+def batch_lock(output_root: Path):
+    with job_activity_for_path(output_root):
+        with _batch_file_lock(output_root):
+            yield
 
 
 def recover_and_validate_ledger(
@@ -455,6 +488,68 @@ def _attempt_namespace(state: Mapping[str, object]) -> int:
     return len(attempts) + 1 if isinstance(attempts, list) else 1
 
 
+def verify_reference_evidence(job: BatchJob) -> None:
+    raw_evidence = job.metadata.get("reference_evidence", [])
+    if not isinstance(raw_evidence, list) or len(raw_evidence) != len(job.images):
+        raise BatchError(f"Reference evidence is missing or malformed for {job.id}")
+    for ref, evidence in zip(job.images, raw_evidence):
+        if not isinstance(evidence, dict):
+            raise BatchError(f"Reference evidence is malformed for {job.id}")
+        digest, size = file_digest(ref)
+        if digest != evidence.get("sha256") or size != evidence.get("size"):
+            raise BatchError(f"Reference drift detected before transport for {job.id}: {ref}")
+
+
+@contextlib.contextmanager
+def snapshotted_references(job: BatchJob):
+    """Copy approved bytes into a private managed job and yield only those paths."""
+    if not job.images:
+        yield job
+        return
+    raw_evidence = job.metadata.get("reference_evidence", [])
+    if not isinstance(raw_evidence, list) or len(raw_evidence) != len(job.images):
+        raise BatchError(f"Reference evidence is missing or incomplete for {job.id}")
+
+    snapshot_job = create_job_dir("single")
+    with job_activity_for_path(snapshot_job):
+        snapshot_dir = snapshot_job / "approved-reference-snapshot"
+        snapshot_dir.mkdir(mode=0o700)
+        snapshots: list[Path] = []
+        for index, (source, evidence) in enumerate(zip(job.images, raw_evidence), 1):
+            if not isinstance(evidence, dict) or evidence.get("path") != str(source):
+                raise BatchError(f"Reference evidence is malformed for {job.id}")
+            suffix = source.suffix.lower()
+            target = snapshot_dir / f"reference-{index}{suffix}"
+            digest = hashlib.sha256()
+            size = 0
+            with source.open("rb") as source_stream, target.open("xb") as target_stream:
+                while True:
+                    chunk = source_stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    size += len(chunk)
+                    if size > MAX_REFERENCE_BYTES:
+                        raise BatchError(
+                            f"Reference grew beyond the {MAX_REFERENCE_BYTES}-byte safety limit for {job.id}"
+                        )
+                    target_stream.write(chunk)
+                target_stream.flush()
+                os.fsync(target_stream.fileno())
+            if digest.hexdigest() != evidence.get("sha256") or size != evidence.get("size"):
+                target.unlink(missing_ok=True)
+                raise BatchError(f"Reference drift detected while snapshotting {job.id}: {source}")
+            if os.name != "nt":
+                try:
+                    target.chmod(0o400)
+                except OSError as exc:
+                    raise BatchError(
+                        f"Unable to protect approved reference snapshot for {job.id}"
+                    ) from exc
+            snapshots.append(target.resolve())
+        yield replace(job, images=tuple(snapshots))
+
+
 def _run_one(
     job: BatchJob,
     ledger: dict[str, object],
@@ -479,14 +574,15 @@ def _run_one(
             atomic_write_json(ledger_path, ledger)
         try:
             job.output.parent.mkdir(parents=True, exist_ok=True)
-            result = runner(
-                job.prompt,
-                job.output,
-                list(job.images),
-                execute=True,
-                codex_bin=codex_bin,
-                codex_provenance=codex_provenance,
-            )
+            with snapshotted_references(job) as transport_job:
+                result = runner(
+                    transport_job.prompt,
+                    transport_job.output,
+                    list(transport_job.images),
+                    execute=True,
+                    codex_bin=codex_bin,
+                    codex_provenance=codex_provenance,
+                )
             if result.get("transport_state") != "succeeded":
                 raise BatchError("Transport did not report succeeded state.")
             digest, size = file_digest(job.output)
@@ -584,7 +680,7 @@ def write_summaries(output_root: Path, ledger: Mapping[str, object], ledger_path
     return summary
 
 
-def run_batch(
+def _run_batch_impl(
     manifest: Path,
     output_root: Path,
     *,
@@ -725,6 +821,38 @@ def run_batch(
             else:
                 os.environ[transport.APPROVAL_ENV] = old_single
         return write_summaries(output_root, ledger, ledger_path)
+
+
+def run_batch(
+    manifest: Path,
+    output_root: Path,
+    *,
+    execute: bool = False,
+    workers: str = "auto",
+    start: int = 1,
+    hard_cap: int = 8,
+    ramp_every: int = 3,
+    ram_per_worker_gb: float = 0.5,
+    runner: Callable[..., Mapping[str, object]] = transport.run,
+    ledger_path: Path | None = None,
+    codex_bin: str | Path | None = None,
+) -> dict[str, object]:
+    lexical_root = output_root.expanduser().absolute()
+    if not execute:
+        return _run_batch_impl(
+            manifest, lexical_root, execute=False, workers=workers, start=start,
+            hard_cap=hard_cap, ramp_every=ramp_every,
+            ram_per_worker_gb=ram_per_worker_gb, runner=runner,
+            ledger_path=ledger_path, codex_bin=codex_bin,
+        )
+    jobs, _ = load_manifest(manifest, lexical_root)
+    with protected_directory_tree(lexical_root, [job.output.parent for job in jobs]):
+        return _run_batch_impl(
+            manifest, lexical_root, execute=True, workers=workers, start=start,
+            hard_cap=hard_cap, ramp_every=ramp_every,
+            ram_per_worker_gb=ram_per_worker_gb, runner=runner,
+            ledger_path=ledger_path, codex_bin=codex_bin,
+        )
 
 
 def _qc_record_map(path: Path) -> dict[str, dict[str, object]]:
@@ -870,7 +998,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ledger = load_ledger(ledger_path.expanduser().resolve())
                 write_retry_manifest(jobs, ledger, args.retry_manifest)
         print(json.dumps(summary, ensure_ascii=False, indent=2))
-    except (BatchError, ValueError) as exc:
+    except (BatchError, ValueError, OSError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=os.sys.stderr)
         return 2
     counts = summary.get("counts", {}) if isinstance(summary, dict) else {}

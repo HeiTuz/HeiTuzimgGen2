@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.7.0
+version: 1.7.1
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]

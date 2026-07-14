@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "heituz-unified-"));
+process.env.HEITUZ_INSTALLER_IMPORT = "1";
+const { imggenUpdateArgs } = await import("./heituz.mjs");
+delete process.env.HEITUZ_INSTALLER_IMPORT;
 
 function invoke(args, env = {}, command = process.execPath) {
   const result = spawnSync(command, args, {
@@ -20,6 +23,11 @@ function invoke(args, env = {}, command = process.execPath) {
 }
 
 try {
+  const updateManifest = { imggen2_target: "/tmp/imggen", vision_qc_requested: "gemini-luna" };
+  const interactiveUpdate = imggenUpdateArgs(updateManifest, { interactive: true });
+  assert.equal(interactiveUpdate.includes("--vision-qc"), false);
+  const automatedUpdate = imggenUpdateArgs(updateManifest, { interactive: false });
+  assert.deepEqual(automatedUpdate.slice(-2), ["--vision-qc", "gemini-luna"]);
   const plan = invoke(["scripts/install.mjs", "--dry-run"], { HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: path.join(temp, "local"), APPDATA: path.join(temp, "roaming") });
   assert.match(plan, /powershell\.exe/);
   assert.match(plan, /install\.ps1/);

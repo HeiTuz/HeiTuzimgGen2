@@ -82,6 +82,8 @@ python scripts/gemini_image_qc.py output.png --brief "제품 검수" --qc-mode l
 
 `gemini-luna`는 Gemini를 먼저 쓰고 timeout/429/5xx에만 Luna를 한 번 사용합니다. `gemini`은 Luna로 fallback하지 않으며 현재 세션의 Google AI Studio 키가 필요합니다. `luna`는 Codex 구독 CLI로 직접 검수합니다. `off`는 QC 실행을 fail-closed로 막습니다. `auto`는 두 자격이 있으면 Gemini→Luna, 하나만 있으면 그 경로, 둘 다 없으면 `off`로 해석됩니다.
 
+대화형 터미널에서 `heituz update`를 실행하면 Vision-QC 선택 메뉴가 다시 열립니다. CI·cron 같은 비대화형 업데이트는 기존 선택을 그대로 보존해 자동화가 멈추지 않습니다.
+
 키는 이미지 생성에는 쓰이지 않고, 최대 1024px·300KiB 임시 JPEG 썸네일의 Gemini 검수에만 사용됩니다. 설정 도구는 키를 저장·출력·명령줄 인자로 전달하지 않습니다. 키 값은 URL, 보고서, 저장소 파일에 넣지 마세요.
 
 Google AI Studio에서 키를 만든 뒤 안내된 명령을 **같은 터미널**에서 실행하고 QC를 시작하세요. 세션을 닫으면 키도 사라집니다.

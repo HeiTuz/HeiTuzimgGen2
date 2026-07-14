@@ -73,7 +73,16 @@ Commands:
   process.exit(code);
 }
 
-export function update(manifest, { dryRun, forceCodex }) {
+export function imggenUpdateArgs(manifest, { interactive }) {
+  const args = ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex"];
+  if (!interactive) {
+    const visionQc = manifest.vision_qc_requested || manifest.vision_qc_mode || "off";
+    args.push("--vision-qc", visionQc);
+  }
+  return args;
+}
+
+export function update(manifest, { dryRun, forceCodex, interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) }) {
   const { windows } = locations();
   if (!manifest.imggen2_target || !manifest.mpw_target) {
     throw new Error("Installation manifest is incomplete; rerun the HeiTuzImgGen2 installer.");
@@ -83,8 +92,7 @@ export function update(manifest, { dryRun, forceCodex }) {
     run(plan.command, plan.args, { dryRun, label: "official Codex CLI install/update" });
   }
   const npx = npxCommand(windows);
-  const visionQc = manifest.vision_qc_requested || manifest.vision_qc_mode || "off";
-  run(npx, ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex", "--vision-qc", visionQc], { dryRun, label: "HeiTuzImgGen2 update" });
+  run(npx, imggenUpdateArgs(manifest, { interactive }), { dryRun, label: "HeiTuzImgGen2 update" });
   run(npx, ["--yes", MPW_REPO, "--", "--dest", manifest.mpw_target, "--force", "--quiet"], { dryRun, label: "HeiTuzMPW update" });
 }
 

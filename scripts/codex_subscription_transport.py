@@ -19,6 +19,7 @@ import subprocess
 import sys
 from typing import Mapping, Sequence
 from codex_cli_resolver import CodexResolutionError, ResolvedCodex, resolve_codex_command
+from mpw_prompt_adapter import MpwPromptError, compile_single_prompt
 
 GENERATED_IMAGES_DIR = Path.home() / ".codex" / "generated_images"
 DOWNLOADS_DIR = Path.home() / "Downloads"
@@ -585,14 +586,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--image", action="append", default=[], type=Path)
     parser.add_argument("--execute", action="store_true", help="Perform the approved live call")
     parser.add_argument("--codex-bin", type=Path, help="Explicit official Codex CLI executable")
+    parser.add_argument("--mpw", choices=("auto", "off", "required"), default="auto", help="MPW prompt enhancement for simple text-only generation")
+    parser.add_argument("--mpw-root", type=Path, help="Explicit HeiTuzMPW installation root")
     args = parser.parse_args(argv)
     if args.output is not None and args.batch_dir is not None:
         print(json.dumps({"error": "Use either --output or --batch-dir, not both."}), file=sys.stderr)
         return 2
     try:
+        effective_prompt = args.prompt
+        mpw_compiled = False
+        if not args.image:
+            effective_prompt, mpw_compiled = compile_single_prompt(args.prompt, mode=args.mpw, mpw_root=args.mpw_root)
         output = resolve_output(args.prompt, args.output, args.batch_dir)
-        print(json.dumps(run(args.prompt, output, args.image, args.execute, args.codex_bin), indent=2))
-    except TransportError as exc:
+        result = run(effective_prompt, output, args.image, args.execute, args.codex_bin)
+        result["mpw_compiled"] = mpw_compiled
+        print(json.dumps(result, indent=2))
+    except (TransportError, MpwPromptError) as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2
     return 0

@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 
 const source = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
-const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "references", "scripts"]);
+const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "examples", "references", "scripts"]);
 const VISION_QC_MODES = new Set(["auto", "off"]);
 
 export function normalizeInstallerPath(value, platform = process.platform, cwd = process.cwd()) {

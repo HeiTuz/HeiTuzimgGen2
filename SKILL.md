@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.7.2
+version: 1.8.0
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -81,6 +81,8 @@ python scripts/codex_subscription_batch.py \
 ```
 
 The first cut is always a sequential transport pilot. If that job requires visual QC, bounded fan-out begins only after its independent QC passes. A simple text-only pilot with no references, product-photo correction, promotional layout, or explicit review request skips Vision QC and continues in the same pass. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
+
+For bulk ideation/reference-board requests, use `scripts/creative_batch.py`. It invokes HeiTuzMPW once to compile distinct prompt variations, keeps Vision QC off even for 100+ text-only ideas, stages manifests/ledgers/summaries in a hidden resumable workspace, and publishes only final PNGs. Successful runs delete the workspace; failed or interrupted runs retain it for resume. `examples/batch_100_variations.py` is the reusable cross-platform entrypoint.
 
 ### Post-generation Vision QC
 

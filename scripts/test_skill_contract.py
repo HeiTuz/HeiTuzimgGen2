@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -150,6 +151,20 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(required, combined)
         self.assertIn("is still one image call", combined)
 
+    def test_bulk_ideation_uses_mpw_without_vision_qc_or_run_residue(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        execution = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")
+        combined = skill + execution
+        for required in (
+            "creative_batch.py",
+            "ideation/reference-board",
+            "qc_required: false",
+            "only final PNGs",
+            "deleted on success",
+            "retained only after failure/interruption",
+        ):
+            self.assertIn(required, combined)
+
     def test_cross_os_paths_fail_closed_with_windows_guidance(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         execution = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")
@@ -187,7 +202,8 @@ class SkillContractTests(unittest.TestCase):
             SKILL_ROOT / "references" / "fixtures" / "apparel-handoff.valid.json",
         ):
             self.assertTrue(executable.is_file())
-        self.assertIn("version: 1.7.2", skill)
+        package_version = json.loads((SKILL_ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+        self.assertIn(f"version: {package_version}", skill)
 
 
 class OutputPathTests(unittest.TestCase):

@@ -37,6 +37,8 @@ try {
   const names = packed[0].files.map((file) => file.path);
   assert.equal(names.includes("contracts/v1/image-production-handoff.schema.json"), true,
     "npm package omits the public handoff schema");
+  assert.equal(names.includes("examples/batch_100_variations.py"), true,
+    "npm package omits the reusable bulk-variation entrypoint");
   assert.equal(names.some((name) => /(^|\/)(?:\.git|\.gjc|\.omx|docs-internal|node_modules|__pycache__)(?:\/|$)|\.pyc$|\.bak/u.test(name)), false,
     "npm package includes excluded local state");
   console.log("installer/package privacy allowlist: OK");

@@ -31,6 +31,8 @@ Legacy approval markers may still be accepted by old wrappers but are not requir
 
 `codex_subscription_transport.py --batch-dir` is one image call with a dated destination; it is not the production batch engine. The authoritative multi-cut surface is `codex_subscription_batch.py` and `references/batch-production-contract.md`.
 
+Bulk ideation/reference-board generation uses `creative_batch.py`: MPW compiles deterministic prompt variation records, all records carry `qc_required: false`, and only final PNGs are published after complete transport success. A 100- or 1000-image text-only ideation request does not become a Vision-QC job merely because the count is large. Hidden run state is deleted on success and retained only after failure/interruption.
+
 The first manifest record is a sequential transport pilot. It stops with `awaiting_pilot_qc: true` only when references, product metadata, promo layout, or explicit `qc_required` make visual review necessary. A simple text-only pilot records `qc_status: skipped` and opens bounded fan-out in the same invocation. The output root has one exclusive runner lock and one atomic ledger. Resume requires ledger ownership plus matching regular-file SHA-256 and size; path existence alone is a conflict. One pass makes at most one provider call per pending ID; `rate_limited` and `timed_out` failures do not auto-retry.
 
 ## Cross-platform paths and Windows filesystem behavior

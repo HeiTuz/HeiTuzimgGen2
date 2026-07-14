@@ -96,7 +96,7 @@ class SkillContractTests(unittest.TestCase):
             "atomic ledger",
             "hash-verified",
             "retry manifest",
-            "Hermes subagents",
+            "Parallel workers",
         ):
             self.assertIn(required, combined)
         self.assertIn("is still one image call", combined)
@@ -131,7 +131,7 @@ class SkillContractTests(unittest.TestCase):
             SKILL_ROOT / "references" / "fixtures" / "apparel-handoff.valid.json",
         ):
             self.assertTrue(executable.is_file())
-        self.assertIn("version: 1.5.3", skill)
+        self.assertIn("version: 1.6.0", skill)
 
 
 class OutputPathTests(unittest.TestCase):

@@ -33,7 +33,7 @@ Do not persist either marker in shell profiles, config, `.env`, or scripts. A fa
 
 The first manifest record is a sequential capability-and-quality pilot. Its session/thread-scoped transport must succeed, then the runner stops with `awaiting_pilot_qc: true`. Bounded adaptive fan-out opens only after independent four-axis QC (and promo QC when applicable) is reconciled as passed. The output root has one exclusive runner lock and one atomic ledger. Resume requires ledger ownership plus matching regular-file SHA-256 and size; path existence alone is a conflict. One pass makes at most one attempt per pending job. Partial failures are recorded and exported to a retry manifest rather than looped under stale approval.
 
-Hermes subagents may compile or independently QC disjoint shards. Live executor shards must have separate output roots and ledgers; one prime/aggregator validates IDs/output ownership and reconciles final results. Two agents must never write one live ledger.
+Parallel workers may compile or independently QC disjoint shards. Live executor shards must have separate output roots and ledgers; one aggregator validates IDs/output ownership and reconciles final results. Two workers must never write one live ledger.
 
 ## Artifact recovery
 
@@ -53,4 +53,4 @@ For text recovery, tighten role, position, and copy precision first; use a large
 
 The helper refuses collisions and missing output directories. It accepts zero to four existing reference files and does not mutate them.
 
-For Telegram delivery, use Hermes `send_message` with the generated image as a document/file attachment and retain its filename. A successful Telegram API response is delivery evidence; printing the path is not.
+For Telegram delivery, use a supported messaging tool with the generated image as a document/file attachment and retain its filename. A successful API response is delivery evidence; printing the path is not.

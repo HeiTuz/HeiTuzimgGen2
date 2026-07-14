@@ -25,9 +25,9 @@ Do not hard-code a permanent negative conclusion from one host/version failure. 
 
 - General `codex exec` success proves only the base inference path.
 - Feature listings prove registration/configuration, not tool availability inside the selected execution mode.
-- For image edits, probe the smallest discriminating ladder: zero-reference generation → one reference → two references → the intended reference count. This separates base image capability, attachment parsing, and multi-reference behavior without blaming Hermes configuration prematurely.
+- For image edits, probe the smallest discriminating ladder: zero-reference generation → one reference → two references → the intended reference count. This separates base image capability, attachment parsing, and multi-reference behavior without blaming unrelated configuration prematurely.
 - Codex CLI defines `--image <FILE>...` as variadic. A programmatic command builder must insert `--` before the positional prompt after the final `--image`; otherwise the prompt can be consumed as another image path and Codex reports that stdin supplied no prompt. Keep a regression test that asserts `command[-2] == "--"` and the real prompt is `command[-1]`.
-- If the same request succeeds sequentially but fails only under fan-out, treat concurrency as the changed variable: lower the config-bound worker cap, dry-run again, and obtain approval for the new digest. Do not mutate unrelated Hermes model/provider settings or silently switch routes.
+- If the same request succeeds sequentially but fails only under fan-out, treat concurrency as the changed variable: lower the config-bound worker cap, dry-run again, and obtain approval for the new digest. Do not mutate unrelated model/provider settings or silently switch routes.
 - Parse structured JSON event types and stable error codes when available. Do not print or persist raw stdout/stderr because it may contain account/session data.
 - If the failure classifier returns `unknown`, improve secret-safe classification from documented/stable codes rather than exposing raw output.
 - After a failed live call, do not retry automatically. Diagnose, change one justified variable, and obtain fresh approval immediately before the next live call.

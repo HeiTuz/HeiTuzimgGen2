@@ -27,7 +27,7 @@ if (existsSync(destination)) {
   process.exit(1);
 }
 
-const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "references", "scripts"]);
+const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "references", "scripts"]);
 function shouldCopy(rel) {
   const parts = rel.split(/[/\\]/u);
   if (!ALLOWED_ROOTS.has(parts[0])) return false;

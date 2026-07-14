@@ -28,10 +28,13 @@ try {
   const destination = path.join(temp, "installed");
   run(process.execPath, ["scripts/install.mjs", "--target", destination]);
   assert.equal(fs.existsSync(path.join(destination, "SKILL.md")), true);
+  assert.equal(fs.existsSync(path.join(destination, "contracts", "v1", "image-production-handoff.schema.json")), true);
   assert.equal(hasExcludedPath(destination), false, "installer copied excluded local state");
 
   const packed = JSON.parse(run("npm", ["pack", "--dry-run", "--json"]));
   const names = packed[0].files.map((file) => file.path);
+  assert.equal(names.includes("contracts/v1/image-production-handoff.schema.json"), true,
+    "npm package omits the public handoff schema");
   assert.equal(names.some((name) => /(^|\/)(?:\.git|\.gjc|\.omx|docs-internal|node_modules|__pycache__)(?:\/|$)|\.pyc$|\.bak/u.test(name)), false,
     "npm package includes excluded local state");
   console.log("installer/package privacy allowlist: OK");

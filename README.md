@@ -21,15 +21,21 @@ The browser-based apparel executor is intentionally adapter-gated. It is dry-run
 Requirements: Python 3.10+, the official `codex` CLI, and an authenticated ChatGPT subscription session.
 
 ```bash
-npx --yes github:HeiTuz/HeiTuzimgGen2
+npx --yes github:HeiTuz/HeiTuzimgGen2#v1.6.0
 # or
-bunx github:HeiTuz/HeiTuzimgGen2
+bunx github:HeiTuz/HeiTuzimgGen2#v1.6.0
 ```
 
 Install into a specific directory:
 
 ```bash
-npx --yes github:HeiTuz/HeiTuzimgGen2 -- --target "$HOME/.hermes/skills/HeiTuzimgGen2"
+npx --yes github:HeiTuz/HeiTuzimgGen2#v1.6.0 -- --target "$HOME/.hermes/skills/HeiTuzimgGen2"
+```
+
+The forwarded target form also works with Bun:
+
+```bash
+bunx github:HeiTuz/HeiTuzimgGen2#v1.6.0 -- --target "$HOME/.hermes/skills/HeiTuzimgGen2"
 ```
 
 ## Start with a dry-run
@@ -40,6 +46,16 @@ python scripts/codex_subscription_transport.py \
 ```
 
 Add `--image` once per reference for an edit or composition. A live call requires `--execute` and the current approval marker documented in [references/execution-contract.md](references/execution-contract.md).
+
+## Portable compiler handoff
+
+HeiTuzimgGen2 remains standalone: prompts can be passed directly to the single-image or batch commands above. When [HeiTuzMPW](https://github.com/HeiTuz/HeiTuzMPW) is installed, it can compile an image request into the shared, provider-neutral `heituz-image-production-handoff/v1` JSON contract. Validate and consume that handoff with:
+
+```bash
+python scripts/consume_image_handoff.py request.json --output-root "$PWD/generated"
+```
+
+The command is dry-run by default and uses the same approval and transport boundary as direct invocation. The shared handoff contains an operation, compiled prompt, portable output basename, up to 20 portable image references, and optional string metadata; it contains no machine routing or credentials. This executor currently accepts up to four local references and a PNG output, failing closed on other valid contract capabilities. The canonical schema is [contracts/v1/image-production-handoff.schema.json](contracts/v1/image-production-handoff.schema.json). HTTPS references validate for interchange but must be materialized as relative local files before execution.
 
 ## Batch production
 

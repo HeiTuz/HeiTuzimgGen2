@@ -16,7 +16,7 @@ The coordinator/selector is `../scripts/apparel_three_fullset.py`; one browser t
 `prepare` hashes one immutable folder contract and creates `task-N` → `candidate-set-N/` for every normalized front-color identity. Every task receives the same complete original source inventory, Vision role map, MPW folder master, QC contract, and complete output inventory. Only its candidate root, browser page/session, downloads, ledger, and provenance ownership differ.
 
 ```bash
-python ~/.hermes/skills/HeiTuzimgGen2/scripts/apparel_three_fullset.py prepare \
+python scripts/apparel_three_fullset.py prepare \
   --contract /path/to/folder-contract.json \
   --run-root /path/to/non-source-output-root \
   --runtime-limit 20
@@ -29,7 +29,7 @@ Read the live delegation cap before scheduling and pass the observed value to `-
 Dry-run is the default:
 
 ```bash
-python ~/.hermes/skills/HeiTuzimgGen2/scripts/browser_gpt_apparel_task.py \
+python scripts/browser_gpt_apparel_task.py \
   --task-spec /path/to/task-1.json
 ```
 
@@ -47,9 +47,9 @@ Vision evaluates every available candidate with source fidelity, support removal
 
 ```bash
 python -m unittest discover \
-  -s ~/.hermes/skills/HeiTuzimgGen2/scripts \
+  -s scripts \
   -p 'test_*.py' -v
-python -m py_compile ~/.hermes/skills/HeiTuzimgGen2/scripts/*.py
+python -m py_compile scripts/*.py
 ```
 
 Tests cover 0/1/4 front-color identities, duplicate identities, no filename inference, identical inventories with disjoint roots, cap-20 packing, over-cap blocking, dynamic selection, the 80% gate, missing candidates, resume/no-overwrite/provenance, and the portable producer-to-consumer handoff. They do not open a browser or generate live images.

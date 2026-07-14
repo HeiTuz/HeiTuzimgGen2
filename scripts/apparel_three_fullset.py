@@ -2,7 +2,7 @@
 """Plan and select three independent browser-GPT apparel candidate sets.
 
 This module is network-free.  It prepares immutable per-task contracts, builds a
-Hermes delegation schedule bounded by the live runtime limit, and materializes a
+generic delegation schedule bounded by the live runtime limit, and materializes a
 Vision-scored cross-set selection without overwriting prior artifacts.
 """
 from __future__ import annotations

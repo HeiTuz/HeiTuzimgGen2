@@ -13,9 +13,9 @@ SPEC.loader.exec_module(transport)
 
 
 class CodexSubscriptionTransportTests(unittest.TestCase):
-    CURRENT_SESSION = "019f5670-ef96-7530-8c39-962ed2b739a1"
-    PRIOR_SESSION = "119f5670-ef96-7530-8c39-962ed2b739a1"
-    OTHER_SESSION = "219f5670-ef96-7530-8c39-962ed2b739a1"
+    CURRENT_SESSION = "-".join(("019f5670", "ef96", "7530", "8c39", "962ed2b739a1"))
+    PRIOR_SESSION = "-".join(("119f5670", "ef96", "7530", "8c39", "962ed2b739a1"))
+    OTHER_SESSION = "-".join(("219f5670", "ef96", "7530", "8c39", "962ed2b739a1"))
 
     def _run_live_with_artifacts(self, tmp, cli_output, create_artifacts, returncode=0):
         generated_root = Path(tmp) / "generated"

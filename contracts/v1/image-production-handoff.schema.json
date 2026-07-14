@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HeiTuz/HeiTuzMPW/blob/main/contracts/v1/image-production-handoff.schema.json",
+  "title": "HeiTuz portable image-production handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "operation", "prompt", "output"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "edit"
+          }
+        },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["input_images"],
+        "properties": {
+          "input_images": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "heituz-image-production-handoff/v1"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "operation": {
+      "enum": ["generate", "edit"]
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "negative_prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "input_images": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "role"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "oneOf": [
+              {
+                "pattern": "^(?!/|~)(?![A-Za-z]:[\\\\/])(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+              },
+              {
+                "pattern": "^https://(?![^/?#]*@)[^\\s]+$"
+              }
+            ]
+          },
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      }
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*:[1-9][0-9]*$"
+    },
+    "image_size": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$"
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename"],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+\\.(png|jpg|jpeg|webp)$"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 500
+      }
+    }
+  }
+}

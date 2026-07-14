@@ -107,16 +107,16 @@ python scripts/codex_subscription_batch.py \
 
 The shared output-root lock prevents original/retry runners from overlapping, while separate ledgers preserve each manifest's identity. A custom ledger also receives custom `<ledger-stem>-summary.json/.md` files, so retry summaries do not overwrite the original batch summary.
 
-## Hermes subagent orchestration
+## Parallel worker orchestration
 
-Hermes subagents are useful above the runner rather than as an excuse to omit batch support:
+Parallel workers are useful above the runner rather than as an excuse to omit batch support:
 
 1. **Compiler/planner lanes** can independently classify folders and compile disjoint JSONL records through `HeiTuzMPW`.
 2. **Executor lanes** may own disjoint manifest shards only when each shard has a separate output root, ledger, and fresh hash-bound approval. Two agents must never share one live ledger/output root.
 3. **Critic lanes** can inspect disjoint output sets and return QC JSONL; they do not mutate PNGs or mark their own work accepted.
 4. **Prime/aggregator** validates unique IDs/output ownership, runs or supervises the authoritative pilot, reconciles ledgers and QC, generates retry manifests, and verifies final artifacts.
 
-For ordinary batches, one authoritative runner already performs bounded parallel Codex calls and is simpler than assigning every image to a subagent. Use Hermes fan-out when manifest compilation or independent visual QC is the bottleneck, or when very large batches are partitioned into explicitly disjoint shards.
+For ordinary batches, one authoritative runner already performs bounded parallel Codex calls and is simpler than assigning every image to a worker. Use additional workers when manifest compilation or independent visual QC is the bottleneck, or when very large batches are partitioned into explicitly disjoint shards.
 
 ## Non-negotiable invariants
 

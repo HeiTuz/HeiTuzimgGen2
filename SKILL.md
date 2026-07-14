@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the official Codex CLI using ChatGPT subscription authentication. Includes provenance-safe single-image transport, resumable JSONL batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.5.3
+version: 1.6.0
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -13,7 +13,7 @@ metadata:
 
 # HeiTuzimgGen2
 
-Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. The skill is transport and result-QC infrastructure; `HeiTuzMPW` owns final IMAGE prompt compilation when both are installed.
+Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. The skill remains a standalone transport and result-QC tool. When `HeiTuzMPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
 
 ## Capabilities
 
@@ -47,6 +47,17 @@ python scripts/codex_subscription_transport.py \
 
 Both commands are dry-runs until `--execute` is supplied with the required fresh approval marker. See [references/execution-contract.md](references/execution-contract.md).
 
+### Portable compiled handoff
+
+Direct prompt invocation remains fully supported and does not require another skill. An installed `HeiTuzMPW` compiler may instead emit `heituz-image-production-handoff/v1` JSON. Consume it without host-specific routing:
+
+```bash
+python scripts/consume_image_handoff.py request.json \
+  --output-root "$PWD/generated"
+```
+
+This adapter validates [contracts/v1/image-production-handoff.schema.json](contracts/v1/image-production-handoff.schema.json), resolves relative input paths from the handoff file, keeps the output under `--output-root`, and delegates to the same dry-run-first transport. HTTPS input references must first be materialized as relative local files. The handoff must never contain credentials, approval state, session identifiers, or machine/worker routing.
+
 ### Production batch
 
 Compile a self-contained prompt per cut, prepare a JSONL manifest, then dry-run:
@@ -58,7 +69,7 @@ python scripts/codex_subscription_batch.py \
   --workers auto
 ```
 
-The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Hermes subagents may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
+The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
 ### Apparel full-set preparation
 

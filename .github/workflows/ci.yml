@@ -18,7 +18,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: oven-sh/setup-bun@v2
       - name: Full network-free suite
         run: npm test
-      - name: Installer smoke test
-        run: npm run smoke:install
+      - name: Exact-tree npx and bunx installer smokes
+        run: |
+          archive="$(npm pack --silent)"
+          npx_target="$(mktemp -d)/npx/HeiTuzimgGen2"
+          bunx_target="$(mktemp -d)/bunx/HeiTuzimgGen2"
+          npx --yes "./$archive" -- --target "$npx_target"
+          bunx --package "$PWD/$archive" heituz-imggen2 -- --target "$bunx_target"
+          test -f "$npx_target/SKILL.md"
+          test -f "$npx_target/contracts/v1/image-production-handoff.schema.json"
+          test -f "$bunx_target/SKILL.md"
+          test -f "$bunx_target/contracts/v1/image-production-handoff.schema.json"

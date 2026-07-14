@@ -117,8 +117,8 @@ function ensurePillow(loc, options) {
   if (install.error || install.status !== 0) {
     console.warn(
       "Pillow could not be installed automatically (for example on a PEP 668 externally-managed Python). " +
-      "Vision-QC thumbnails require Pillow; install it later via a virtual environment, pipx, or your package manager. " +
-      "Continuing the installation without it; QC stays fail-closed until Pillow is available.",
+      "Reference/edit/product-photo Vision-QC thumbnails require Pillow; install it later via a virtual environment, pipx, or your package manager. " +
+      "Continuing the installation without it; simple text-only generation remains available.",
     );
   }
 }

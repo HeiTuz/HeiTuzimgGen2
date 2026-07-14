@@ -76,6 +76,7 @@ class BatchJob:
     images: tuple[Path, ...]
     promotional: bool
     rendered_text_exists: bool
+    qc_required: bool
     metadata: Mapping[str, object]
     source_record: Mapping[str, object]
 
@@ -126,7 +127,7 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
     canonical_records: list[dict[str, object]] = []
     allowed = {
         "id", "prompt", "full_prompt", "output_path", "images", "promotional",
-        "rendered_text_exists", "metadata", "series_locks", "retry_of", "retry_generation",
+        "rendered_text_exists", "qc_required", "metadata", "series_locks", "retry_of", "retry_generation",
         # HeiTuzMPW production JSONL fields retained as compile metadata.
         "category", "cut_type", "title", "format", "tier", "lane", "palette",
         "ar", "size", "quality", "output_format", "output_compression", "labels",
@@ -189,6 +190,15 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
         series_locks = record.get("series_locks", {})
         if not isinstance(metadata, dict) or not isinstance(series_locks, dict):
             raise BatchError(f"metadata/series_locks must be objects for {job_id}")
+        explicit_qc = record.get("qc_required", False)
+        if not isinstance(explicit_qc, bool):
+            raise BatchError(f"qc_required must be a boolean for {job_id}")
+        product_case = bool(
+            metadata.get("product_photo") is True
+            or record.get("category") in {"product", "product_photo", "product-photo"}
+            or record.get("cut_type") in {"product_photo", "product_edit", "product_correction", "product_set"}
+        )
+        qc_required = bool(images or promotional or product_case or explicit_qc)
         merged_metadata = dict(metadata)
         reference_evidence = []
         for ref in images:
@@ -208,6 +218,7 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
         normalized["images"] = [str(p) for p in images]
         normalized["promotional"] = promotional
         normalized["rendered_text_exists"] = rendered
+        normalized["qc_required"] = qc_required
         normalized["metadata"] = merged_metadata
         normalized.pop("series_locks", None)
         canonical_records.append(normalized)
@@ -219,6 +230,7 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
             images=tuple(images),
             promotional=promotional,
             rendered_text_exists=rendered,
+            qc_required=qc_required,
             metadata=merged_metadata,
             source_record=normalized,
         ))
@@ -234,12 +246,13 @@ def _initial_job_state(job: BatchJob) -> dict[str, object]:
         "output_path": job.output_path,
         "prompt_hash": _sha256_bytes(job.prompt.encode()),
         "reference_evidence": job.metadata.get("reference_evidence", []),
+        "qc_required": job.qc_required,
         "attempts": [],
         "source_artifact": None,
         "output_sha256": None,
         "output_size": None,
         "failure_category": None,
-        "qc": {"status": "not_evaluated"},
+        "qc": {"status": "not_evaluated"} if job.qc_required else {"status": "skipped", "reason": "simple_text_only"},
         "updated_at": _now(),
     }
 
@@ -523,17 +536,22 @@ def build_summary(ledger: Mapping[str, object]) -> dict[str, object]:
     states = ledger.get("jobs", {})
     items: list[dict[str, object]] = []
     counts = {status: 0 for status in VALID_STATUSES}
+    awaiting_qc: list[str] = []
     for job_id in order:
         state = states[job_id]
         status = state["status"]
         counts[status] += 1
+        qc_status = state.get("qc", {}).get("status", "not_evaluated")
+        if state.get("qc_required") and status == "succeeded" and qc_status == "not_evaluated":
+            awaiting_qc.append(job_id)
         items.append({
             "id": job_id,
             "status": status,
             "output_path": state.get("output_path"),
             "attempts": len(state.get("attempts", [])),
             "failure_category": state.get("failure_category"),
-            "qc_status": state.get("qc", {}).get("status", "not_evaluated"),
+            "qc_required": bool(state.get("qc_required")),
+            "qc_status": qc_status,
         })
     return {
         "manifest_sha256": ledger.get("manifest_sha256"),
@@ -544,6 +562,7 @@ def build_summary(ledger: Mapping[str, object]) -> dict[str, object]:
         "updated_at": ledger.get("updated_at"),
         "pilot_id": ledger.get("pilot_id"),
         "awaiting_pilot_qc": bool(ledger.get("awaiting_pilot_qc")),
+        "awaiting_qc": awaiting_qc,
         "counts": counts,
         "items": items,
     }
@@ -676,14 +695,15 @@ def run_batch(
                     summary = write_summaries(output_root, ledger, ledger_path)
                     summary["pilot_failed"] = True
                     return summary
-                ledger["awaiting_pilot_qc"] = True
-                ledger["updated_at"] = _now()
-                atomic_write_json(ledger_path, ledger)
-                return write_summaries(output_root, ledger, ledger_path)
+                if pilot.qc_required:
+                    ledger["awaiting_pilot_qc"] = True
+                    ledger["updated_at"] = _now()
+                    atomic_write_json(ledger_path, ledger)
+                    return write_summaries(output_root, ledger, ledger_path)
 
             pilot_qc = pilot_state.get("qc", {})
             pilot_qc_passed = isinstance(pilot_qc, dict) and pilot_qc.get("status") == "passed"
-            if pilot_state["status"] == "succeeded" and not pilot_qc_passed:
+            if pilot.qc_required and pilot_state["status"] == "succeeded" and not pilot_qc_passed:
                 ledger["awaiting_pilot_qc"] = True
                 ledger["updated_at"] = _now()
                 atomic_write_json(ledger_path, ledger)

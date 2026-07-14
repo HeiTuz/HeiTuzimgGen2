@@ -83,6 +83,22 @@ def complete_approved_batch(manifest, out, runner, **kwargs):
 
 
 class BatchManifestTests(unittest.TestCase):
+    def test_auto_qc_policy_targets_references_product_promo_and_explicit_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = root / "ref.png"
+            ref.write_bytes(b"ref")
+            manifest = root / "policy.jsonl"
+            write_jsonl(manifest, [
+                {"id": "simple", "prompt": "abstract scene", "output_path": "simple.png"},
+                {"id": "referenced", "prompt": "preserve subject", "output_path": "referenced.png", "images": ["ref.png"]},
+                {"id": "product", "prompt": "clean product cut", "output_path": "product.png", "metadata": {"product_photo": True}},
+                {"id": "promo", "prompt": "campaign poster", "output_path": "promo.png", "promotional": True},
+                {"id": "explicit", "prompt": "review this", "output_path": "explicit.png", "qc_required": True},
+            ])
+            jobs, _ = batch.load_manifest(manifest, root / "out")
+            self.assertEqual([job.qc_required for job in jobs], [False, True, True, True, True])
+
     def test_manifest_validates_and_hash_is_deterministic(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -98,6 +114,8 @@ class BatchManifestTests(unittest.TestCase):
             self.assertEqual(hash1, hash2)
             self.assertEqual([j.id for j in jobs1], ["a", "b"])
             self.assertEqual(jobs1[0].images, (ref.resolve(),))
+            self.assertTrue(jobs1[0].qc_required)
+            self.assertFalse(jobs1[1].qc_required)
             self.assertEqual(jobs1[1].metadata["series_locks"], {"palette": "red"})
             self.assertEqual(jobs1[0].metadata["reference_evidence"][0]["sha256"], batch.file_digest(ref)[0])
             ref.write_bytes(b"changed-reference")
@@ -192,9 +210,24 @@ class BatchExecutionTests(unittest.TestCase):
         self.addCleanup(self.resolver_patch.stop)
     def make_manifest(self, root, count=3):
         manifest = root / "jobs.jsonl"
-        records = [{"id": f"j{i}", "prompt": f"p{i}", "output_path": f"{i}.png"} for i in range(count)]
+        records = [{"id": f"j{i}", "prompt": f"p{i}", "output_path": f"{i}.png", "qc_required": True} for i in range(count)]
         write_jsonl(manifest, records)
         return manifest, records
+
+    def test_simple_text_batch_skips_vision_qc_and_finishes_same_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "simple.jsonl"
+            write_jsonl(manifest, [
+                {"id": f"simple-{index}", "prompt": f"abstract scene {index}", "output_path": f"{index}.png"}
+                for index in range(3)
+            ])
+            runner = FakeRunner()
+            summary = batch.run_batch(manifest, root / "out", execute=True, runner=runner, workers="2")
+            self.assertEqual(len(runner.calls), 3)
+            self.assertFalse(summary["awaiting_pilot_qc"])
+            self.assertEqual(summary["awaiting_qc"], [])
+            self.assertTrue(all(item["qc_status"] == "skipped" for item in summary["items"]))
 
     def raw_approved_run(self, manifest, out, runner, **kwargs):
         return raw_approved_batch(manifest, out, runner, **kwargs)

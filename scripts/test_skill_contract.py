@@ -15,6 +15,13 @@ SPEC.loader.exec_module(transport)
 
 
 class SkillContractTests(unittest.TestCase):
+    def test_auto_vision_qc_is_risk_based_not_always_on(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`auto` is risk-based, not always-on", skill)
+        self.assertIn("simple_text_only", skill)
+        self.assertIn("skip Vision analysis and regeneration", skill)
+        self.assertIn("at least one reference/input image exists", skill)
+
     @staticmethod
     def _resolved_codex():
         return SimpleNamespace(

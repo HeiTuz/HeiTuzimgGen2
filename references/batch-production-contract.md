@@ -12,7 +12,7 @@ One JSON object per line:
 {"id":"red-front","prompt":"Final compiled IMAGE prompt","output_path":"red/front.png","images":["refs/red-front.png","refs/main-back.png","refs/main-fabric.png"],"promotional":false,"rendered_text_exists":false,"series_locks":{"construction":"approved-main-pilot","material":"main-fabric-authority"}}
 ```
 
-Required native fields: `id`, `prompt`, `output_path`. Optional: `images` (0–4), `promotional`, `rendered_text_exists`, `metadata`, `series_locks`, `retry_of`.
+Required native fields: `id`, `prompt`, `output_path`. Optional: `images` (0–4), `promotional`, `rendered_text_exists`, `qc_required`, `metadata`, `series_locks`, `retry_of`. `qc_required: true` forces visual review for a job that would otherwise be a simple text-only generation; `false` never disables review triggered by references, product-photo metadata, or promotional layout.
 
 A validated `HeiTuzMPW` production JSONL record is accepted directly: `full_prompt` aliases `prompt`; category/format/tier/lane/palette/AR/size/quality/promo fields are retained as compile metadata; `cut_type: promo_poster` and text fields infer QC branches. Because the Codex transport returns PNG only, compiled `.webp`/other output suffixes are deterministically normalized to `.png`, while the original compiled path remains in metadata. Run the MPW JSONL validator before this transport preflight; this runner validates execution ownership, not prompt doctrine.
 
@@ -43,7 +43,7 @@ Digests still detect drift. Failed or QC-failed items may be retried automatical
 
 ## Pilot and fan-out
 
-The first manifest record is the transport-and-quality pilot and runs alone. After a zero-exit, fresh, non-empty, session/thread-scoped PNG, the runner stops with `awaiting_pilot_qc: true`; no other cut is submitted. Independent four-axis QC—and promo QC when the pilot is promotional—must be reconciled as passed before a later invocation opens fan-out. Transport or QC failure leaves remaining jobs pending and stops the pass.
+The first manifest record is always the transport pilot and runs alone. A pilot with references, product-photo metadata, promotional layout, or `qc_required: true` stops with `awaiting_pilot_qc: true`; independent four-axis QC must pass before a later invocation opens fan-out. A simple text-only pilot records `qc_status: skipped` and opens bounded fan-out in the same invocation. Transport failure still leaves remaining jobs pending and stops the pass.
 
 After the pilot:
 

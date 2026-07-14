@@ -78,15 +78,17 @@ python scripts/codex_subscription_batch.py \
   --workers auto
 ```
 
-The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
+The first cut is always a sequential transport pilot. If that job requires visual QC, bounded fan-out begins only after its independent QC passes. A simple text-only pilot with no references, product-photo correction, promotional layout, or explicit review request skips Vision QC and continues in the same pass. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
 ### Post-generation Vision QC
 
-For every generated delivery candidate, invoke the host's default Vision analysis tool in `auto` mode. On Hermes this is `vision_analyze`, which follows the live `auxiliary.vision` configuration instead of pinning a reviewer inside ImgGen2. The full original remains the delivery artifact and is never modified.
+`auto` is risk-based, not always-on. Invoke the host's default Vision analysis tool when at least one reference/input image exists, the request edits or corrects an existing image, the work is a product-photo correction or product set, the layout is promotional, or the user explicitly asks for review/comparison. On Hermes this uses `vision_analyze`, which follows the live `auxiliary.vision` configuration instead of pinning a reviewer inside ImgGen2. The full original remains the delivery artifact and is never modified.
 
-The installed `vision-qc.json` contains `{version: 2, requested_mode: "auto", qc_mode: "auto", reviewer: "host-default-vision"}` and no credentials. `auto` is the default in interactive and non-interactive installs. `off` is the only alternative and blocks acceptance because unreviewed outputs cannot be delivered as final.
+For a text-only creation with no reference, edit, product-photo correction, promotional layout, or explicit QC request, skip Vision analysis and regeneration. Still verify the output locally: expected file exists, is non-empty, has the expected image format, and does not overwrite another artifact. Mark this path as `qc_status: skipped` with reason `simple_text_only`.
 
-Review the image against the requested brief, source fidelity, text accuracy when applicable, material realism, layout, and cross-image consistency. Require a structured result containing the four axis scores, pass/fail, observed defects, and the smallest regeneration delta. The review report records the image hash and dimensions; requested model names are not model-identity evidence.
+The installed `vision-qc.json` contains `{version: 2, requested_mode: "auto", qc_mode: "auto", reviewer: "host-default-vision"}` and no credentials. `auto` is the default in interactive and non-interactive installs. `off` is the only alternative and disables visual review even for high-risk cases; local artifact validation still applies.
+
+When QC is required, review the image against the requested brief, source fidelity, text accuracy when applicable, material realism, layout, and cross-image consistency. Require a structured result containing the four axis scores, pass/fail, observed defects, and the smallest regeneration delta. Regenerate only failed required cases and only with the smallest failed-axis delta. The review report records the image hash and dimensions; requested model names are not model-identity evidence.
 
 ### Provider routing quick reference
 

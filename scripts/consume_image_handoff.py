@@ -12,6 +12,7 @@ from typing import Any, Sequence
 from urllib.parse import urlparse
 
 import codex_subscription_transport as transport
+from portable_paths import foreign_path_message
 
 SCHEMA_VERSION = "heituz-image-production-handoff/v1"
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -31,6 +32,9 @@ def _portable_relative_path(value: object, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise HandoffError(f"{field} must be a non-empty string")
     path = PurePosixPath(value)
+    foreign = foreign_path_message(value, field=field)
+    if foreign is not None and (path.is_absolute() or "\\" in value or re.match(r"^[A-Za-z]:", value)):
+        raise HandoffError(foreign)
     if (
         path.is_absolute()
         or value.startswith("~")

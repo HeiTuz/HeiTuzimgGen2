@@ -27,6 +27,7 @@ import time
 from typing import Callable, Mapping, Sequence
 
 import codex_subscription_transport as transport
+from portable_paths import PathCompatibilityError, is_symlink_or_reparse, normalize_local_path
 
 
 LEDGER_NAME = ".heituzimggen2-batch.json"
@@ -93,10 +94,10 @@ def _reject_symlink_components(root: Path, candidate: Path) -> None:
     current = root
     for part in candidate.relative_to(root).parts[:-1]:
         current = current / part
-        if current.exists() and current.is_symlink():
-            raise BatchError(f"Output parent contains a symlink: {current}")
-    if candidate.exists() and candidate.is_symlink():
-        raise BatchError(f"Output path is a symlink: {candidate}")
+        if current.exists() and is_symlink_or_reparse(current):
+            raise BatchError(f"Output parent contains a symlink, junction, or reparse point: {current}")
+    if candidate.exists() and is_symlink_or_reparse(candidate):
+        raise BatchError(f"Output path is a symlink, junction, or reparse point: {candidate}")
 
 
 def _load_jsonl(path: Path) -> list[tuple[int, dict[str, object]]]:
@@ -172,11 +173,17 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
             raise BatchError(f"At most four references are supported for {job_id}")
         images: list[Path] = []
         for raw in raw_images:
-            ref_input = Path(raw).expanduser()
+            if not isinstance(raw, str) or not raw:
+                raise BatchError(f"Image references must be non-empty strings for {job_id}")
+            try:
+                local_raw = normalize_local_path(raw, field=f"image reference for {job_id}")
+            except PathCompatibilityError as exc:
+                raise BatchError(str(exc)) from None
+            ref_input = Path(local_raw).expanduser()
             if not ref_input.is_absolute():
                 ref_input = path.parent / ref_input
-            if ref_input.is_symlink():
-                raise BatchError(f"Reference must be a non-symlink regular file for {job_id}: {raw}")
+            if is_symlink_or_reparse(ref_input):
+                raise BatchError(f"Reference must be a non-reparse regular file for {job_id}: {raw}")
             ref = ref_input.resolve(strict=False)
             if not ref.is_file():
                 raise BatchError(f"Reference must be a non-symlink regular file for {job_id}: {raw}")
@@ -280,7 +287,15 @@ def atomic_write_json(path: Path, value: object) -> None:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp, path)
+        for attempt, delay in enumerate((0.05, 0.1, 0.2, 0.4, 0.8), 1):
+            try:
+                os.replace(temp, path)
+                break
+            except OSError as exc:
+                error_code = getattr(exc, "winerror", None) or exc.errno
+                if os.name != "nt" or error_code not in {5, 32} or attempt == 5:
+                    raise
+                time.sleep(delay)
         try:
             directory_fd = os.open(path.parent, os.O_RDONLY)
         except OSError:  # directory fsync is unavailable on some platforms
@@ -366,7 +381,7 @@ def recover_and_validate_ledger(
             state["failure_category"] = "interrupted_recovered"
             state["updated_at"] = _now()
         if state["status"] in {"succeeded", "skipped", "qc_failed"}:
-            if not job.output.is_file() or job.output.is_symlink():
+            if not job.output.is_file() or is_symlink_or_reparse(job.output):
                 raise BatchError(f"Resume evidence missing for {job.id}: output is absent or unsafe.")
             digest, size = file_digest(job.output)
             if digest != state.get("output_sha256") or size != state.get("output_size"):

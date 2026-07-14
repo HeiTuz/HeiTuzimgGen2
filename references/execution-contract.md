@@ -5,7 +5,7 @@
 The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `image_generation` tool. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
 `HeiTuzMPW` owns image-prompt compilation when installed. HeiTuzimgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
 
-No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Post-generation QC is delegated to the host's default Vision tool. The installed `vision-qc.json` contains only version, mode, and reviewer-routing metadata; credentials or provider-specific model names are forbidden. `auto` follows the live host Vision configuration and `off` prevents unreviewed outputs from becoming final.
+No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Risk-based post-generation QC is delegated to the host's default Vision tool for reference/edit/product/promo work; simple text-only generation skips the visual loop. The installed `vision-qc.json` contains only version, mode, and reviewer-routing metadata; credentials or provider-specific model names are forbidden. `auto` follows the live host Vision configuration and `off` disables visual review while preserving local artifact validation.
 
 ## Model-label honesty
 
@@ -31,7 +31,13 @@ Legacy approval markers may still be accepted by old wrappers but are not requir
 
 `codex_subscription_transport.py --batch-dir` is one image call with a dated destination; it is not the production batch engine. The authoritative multi-cut surface is `codex_subscription_batch.py` and `references/batch-production-contract.md`.
 
-The first manifest record is a sequential capability-and-quality pilot. Its session/thread-scoped transport must succeed, then the runner stops with `awaiting_pilot_qc: true`. Bounded adaptive fan-out opens only after independent four-axis QC (and promo QC when applicable) is reconciled as passed. The output root has one exclusive runner lock and one atomic ledger. Resume requires ledger ownership plus matching regular-file SHA-256 and size; path existence alone is a conflict. One pass makes at most one attempt per pending job. Partial failures are recorded and exported to a retry manifest rather than looped under stale approval.
+The first manifest record is a sequential transport pilot. It stops with `awaiting_pilot_qc: true` only when references, product metadata, promo layout, or explicit `qc_required` make visual review necessary. A simple text-only pilot records `qc_status: skipped` and opens bounded fan-out in the same invocation. The output root has one exclusive runner lock and one atomic ledger. Resume requires ledger ownership plus matching regular-file SHA-256 and size; path existence alone is a conflict. One pass makes at most one provider call per pending ID; `rate_limited` and `timed_out` failures do not auto-retry.
+
+## Cross-platform paths and Windows filesystem behavior
+
+A foreign absolute path is not portable evidence. A Windows host receiving `/Users/...` or `/Volumes/...` stops with an actionable mismatch error instead of rewriting it to `C:\\Users\\...`; require file transfer, re-attachment, or a real Windows/UNC path. WSL mount conversion is allowed only when the mapping is deterministic and explicit.
+
+Windows paths may use drive letters, UNC shares, spaces, Unicode, and `file:///C:/...`. Reject reserved names, trailing dots/spaces, credential-bearing `file://` URIs, symlinks, junctions, and reparse points. Atomic ledger replacement retries only transient Windows sharing/access errors 5 and 32 with bounded backoff; all other errors fail immediately.
 
 Parallel workers may compile or independently QC disjoint shards. Live executor shards must have separate output roots and ledgers; one aggregator validates IDs/output ownership and reconciles final results. Two workers must never write one live ledger.
 

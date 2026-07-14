@@ -195,6 +195,19 @@ class BatchManifestTests(unittest.TestCase):
 
 
 class BatchExecutionTests(unittest.TestCase):
+    def test_atomic_write_retries_windows_smb_sharing_violation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "ledger.json"
+            class WindowsSharingViolation(OSError):
+                winerror = 32
+            sharing_violation = WindowsSharingViolation(13, "sharing violation")
+            with patch.object(batch.os, "name", "nt"), \
+                 patch.object(batch.os, "replace", side_effect=[sharing_violation, None]) as replace, \
+                 patch.object(batch.time, "sleep") as sleep:
+                batch.atomic_write_json(target, {"status": "ok"})
+            self.assertEqual(replace.call_count, 2)
+            sleep.assert_called_once_with(0.05)
+
     def setUp(self):
         self.resolver_patch = patch.object(
             batch.transport,

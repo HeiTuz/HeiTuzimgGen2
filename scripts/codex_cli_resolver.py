@@ -14,6 +14,8 @@ import subprocess
 import sys
 from typing import Callable, Mapping, Sequence
 
+from portable_paths import PathCompatibilityError, normalize_local_path
+
 CODEX_OVERRIDE_ENV = "HEITUZ_IMGGEN2_CODEX_BIN"
 CODEX_INSTALL_DIR_ENV = "CODEX_INSTALL_DIR"
 OFFICIAL_INSTALLER_URL = "https://chatgpt.com/codex/install.sh"
@@ -106,7 +108,13 @@ def _validated_candidate(
     minimum_version: Version | None,
     runner: Callable[..., subprocess.CompletedProcess[str]],
 ) -> ResolvedCodex:
-    path = Path(command).expanduser().resolve(strict=False)
+    local_command = command
+    if platform == sys.platform or (platform.startswith("win") and sys.platform.startswith("win")):
+        try:
+            local_command = normalize_local_path(command, platform=platform, field="Codex executable")
+        except PathCompatibilityError as exc:
+            raise CodexResolutionError(str(exc)) from None
+    path = Path(local_command).expanduser().resolve(strict=False)
     if not _is_executable(path, platform):
         raise CodexResolutionError("Codex executable is missing or not executable.")
     version = probe_codex_version(str(path), runner=runner)
@@ -145,7 +153,13 @@ def resolve_codex_command(
     else:
         install_dir = environ.get(CODEX_INSTALL_DIR_ENV)
         if install_dir:
-            candidates.append(("install_dir", str(Path(install_dir).expanduser() / executable_name), False))
+            local_install_dir = install_dir
+            if platform == sys.platform or (platform.startswith("win") and sys.platform.startswith("win")):
+                try:
+                    local_install_dir = normalize_local_path(install_dir, platform=platform, field=CODEX_INSTALL_DIR_ENV)
+                except PathCompatibilityError as exc:
+                    raise CodexResolutionError(str(exc)) from None
+            candidates.append(("install_dir", str(Path(local_install_dir).expanduser() / executable_name), False))
         if canonical is not None:
             candidates.append(("official", str(canonical), False))
         path_names = ("codex", "codex.exe", "codex.cmd") if windows else ("codex",)

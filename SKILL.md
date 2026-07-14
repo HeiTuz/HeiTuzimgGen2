@@ -21,7 +21,7 @@ Generate or edit images through the official Codex CLI with an authenticated Cha
 - dry-run-first transport with exclusive output creation and session-scoped artifact provenance;
 - resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
 - explicit-only Grok image generation through Hermes native `image_generate`, gated on `xai-oauth`, with exact-N queueing that starts at 3 active jobs and never exceeds 5;
-- required post-generation QC through the host's default Vision tool in `auto` mode, with thumbnail-only review, strict structured output, and provenance-bound reports;
+- risk-based post-generation QC through the host's default Vision tool in `auto` mode for reference/edit/product/promo work, with simple text-only generation skipping the visual loop;
 - optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by whole-set selection at a minimum 80% family-similarity gate.
 
 Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. Post-generation QC uses the host's currently configured default Vision model; ImgGen2 does not pin a separate reviewer model or provider. Never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use a supported file attachment; printing the path is not delivery evidence.
@@ -33,6 +33,8 @@ Never fall back to a different generation provider or a pinned reviewer model wh
 - An explicit user request to create images authorizes the bounded generation scope. `--execute` runs it without a second confirmation or approval-marker ceremony. Fresh approval is required only for scope/count expansion, provider or paid-route changes, overwriting originals, or external publication/delivery.
 - The presence of xAI credentials never changes routing. Bare image and exact-count requests stay on Codex. Grok activates only on explicit provider intent and fails closed as `grok_route: disabled` when `xai-oauth` or the native xAI `image_generate` tool is unavailable.
 - Product-photo candidate tasks use the standard ImgGen2 generation backend. Every attempt receives the same complete source inventory, product specification, QC contract, and output inventory while keeping output roots and ledgers disjoint.
+- A path from another operating system is not a local file. Never guess `/Users/...` as `C:\\Users\\...` or map a foreign home directory by username. Require file transfer/re-attachment or a real local/UNC path. Only deterministic WSL mount mappings such as `/mnt/c/...` may be converted automatically.
+- On Windows, accept drive-letter paths, UNC shares, spaces, Unicode, and local `file://` URIs. Reject reserved device names, trailing dots/spaces, credential-bearing file URIs, and symlink/junction/reparse traversal. Use the standard extended-length prefix for long absolute paths instead of silently relocating them.
 
 ## Core procedures
 

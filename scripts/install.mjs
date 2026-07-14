@@ -12,6 +12,39 @@ const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg =
 const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "references", "scripts"]);
 const VISION_QC_MODES = new Set(["auto", "off"]);
 
+export function normalizeInstallerPath(value, platform = process.platform, cwd = process.cwd()) {
+  if (typeof value !== "string" || !value || value.includes("\0")) throw new Error("Install path must be a non-empty path without NUL bytes.");
+  let candidate = value;
+  if (/^file:/iu.test(candidate)) {
+    const parsed = new URL(candidate);
+    if (parsed.username || parsed.password) throw new Error("Install path file URI must not contain credentials.");
+    if (platform === "win32" && parsed.hostname && parsed.hostname !== "localhost") {
+      candidate = `\\\\${parsed.hostname}${decodeURIComponent(parsed.pathname).replaceAll("/", "\\")}`;
+    } else {
+      if (parsed.hostname && parsed.hostname !== "localhost") throw new Error("Remote file URI is not a local install path.");
+      candidate = decodeURIComponent(parsed.pathname);
+      if (platform === "win32" && /^\/[A-Za-z]:\//u.test(candidate)) candidate = candidate.slice(1).replaceAll("/", "\\");
+    }
+  }
+  if (platform === "win32") {
+    if (/^\/(?:Users|Volumes|Applications|System|Library)(?:\/|$)/u.test(candidate)) {
+      throw new Error("Install path belongs to macOS and cannot be guessed on Windows; provide a real Windows/UNC path.");
+    }
+    const wsl = candidate.match(/^\/mnt\/([A-Za-z])(?:\/(.*))?$/u);
+    if (wsl) candidate = `${wsl[1].toUpperCase()}:\\${(wsl[2] || "").replaceAll("/", "\\")}`.replace(/\\$/u, "");
+    else if (/^\//u.test(candidate)) throw new Error("Install path is POSIX syntax and cannot be guessed on Windows; provide a real Windows/UNC path.");
+    const resolved = path.win32.resolve(cwd, candidate);
+    if (resolved.length >= 240 && !resolved.startsWith("\\\\?\\")) {
+      return resolved.startsWith("\\\\") ? `\\\\?\\UNC\\${resolved.slice(2)}` : `\\\\?\\${resolved}`;
+    }
+    return resolved;
+  }
+  if (/^[A-Za-z]:[\\/]/u.test(candidate) || /^\\\\/u.test(candidate)) {
+    throw new Error("Install path belongs to Windows and cannot be guessed on this host; provide its real local path.");
+  }
+  return path.resolve(cwd, candidate);
+}
+
 function usage(code = 0) {
   const out = code === 0 ? console.log : console.error;
   out(`HeiTuzImgGen2 unified installer
@@ -141,8 +174,12 @@ async function main() {
   delete process.env.HEITUZ_INSTALLER_IMPORT;
   const loc = helper.locations();
   ensurePillow(loc, options);
-  const destination = path.resolve(options.target || path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"));
-  const mpwTarget = path.resolve(options.mpwTarget || path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"));
+  const destination = options.target
+    ? normalizeInstallerPath(options.target)
+    : path.resolve(path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"));
+  const mpwTarget = options.mpwTarget
+    ? normalizeInstallerPath(options.mpwTarget)
+    : path.resolve(path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"));
   const visionQc = await selectVisionQc(options);
 
   if (options.dryRun) {
@@ -213,4 +250,6 @@ async function main() {
   console.log("Open a new terminal, then run: heituz update");
 }
 
-main().catch((error) => { console.error(`HeiTuzImgGen2 installer: ${error.message}`); process.exitCode = 1; });
+if (path.resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {
+  main().catch((error) => { console.error(`HeiTuzImgGen2 installer: ${error.message}`); process.exitCode = 1; });
+}

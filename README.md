@@ -84,6 +84,14 @@ npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2 -- --vision-qc of
 
 대화형·비대화형 설치와 업데이트 모두 명시 옵션이 없으면 `auto`를 사용합니다. 모델·provider 선택은 ImgGen2가 아니라 호스트의 Vision 설정이 소유합니다.
 
+## Windows 및 다른 OS 경로
+
+Windows에서는 `C:\\...`, UNC 공유 경로(`\\\\server\\share\\...`), 공백·Unicode 경로, `file:///C:/...`를 지원합니다. `/mnt/c/...`는 의미가 확정되므로 `C:\\...`로 변환할 수 있습니다. 긴 절대경로는 Windows extended-length 형식으로 정규화합니다.
+
+반대로 `/Users/...`·`/Volumes/...`는 macOS 머신의 로컬 경로이므로 Windows의 `C:\\Users\\...`로 추측 변환하지 않습니다. `/home/...` 같은 Linux 경로와 다른 머신의 Windows 경로도 마찬가지입니다. 이 경우 파일을 현재 컴퓨터로 복사·재첨부하거나, 실제 Windows 로컬 경로 또는 UNC 공유 경로를 다시 지정해야 합니다. `file://` URI에 사용자명·비밀번호를 넣는 것도 거부합니다.
+
+Windows batch ledger가 OneDrive·SMB·백신의 짧은 파일 잠금과 충돌해 `WinError 5` 또는 `WinError 32`를 내면 atomic replace를 제한적으로 재시도합니다. 출력 경로의 symlink뿐 아니라 junction/reparse point도 거부합니다. `npm test`와 install smoke는 Windows/macOS/Linux CI에서 각각 실행됩니다.
+
 ## 업데이트도 한 줄
 
 ```bash

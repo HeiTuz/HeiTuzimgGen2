@@ -141,7 +141,7 @@ class SkillContractTests(unittest.TestCase):
             "manifest_sha256",
             "approval_sha256",
             "awaiting_pilot_qc",
-            "capability-and-quality pilot",
+            "sequential transport pilot",
             "atomic ledger",
             "hash-verified",
             "retry manifest",
@@ -149,6 +149,13 @@ class SkillContractTests(unittest.TestCase):
         ):
             self.assertIn(required, combined)
         self.assertIn("is still one image call", combined)
+
+    def test_cross_os_paths_fail_closed_with_windows_guidance(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        execution = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")
+        combined = skill + execution
+        for required in ("/Users/...", "UNC", "WSL mount", "junction", "reparse", "errors 5 and 32"):
+            self.assertIn(required, combined)
 
     def test_apparel_dynamic_fullset_branch_preserves_role_boundaries(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")

@@ -404,6 +404,19 @@ class BatchExecutionTests(unittest.TestCase):
 
 
 class BatchQcTests(unittest.TestCase):
+    def setUp(self):
+        self.resolver_patch = patch.object(
+            batch.transport,
+            "resolve_codex_command",
+            return_value=SimpleNamespace(
+                command="/opt/codex",
+                source="explicit",
+                version=(0, 144, 3),
+                provenance={"path": "/opt/codex", "source": "explicit", "version": [0, 144, 3]},
+            ),
+        )
+        self.resolver_patch.start()
+        self.addCleanup(self.resolver_patch.stop)
     def test_qc_marks_only_failed_cut_and_builds_delta_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); manifest = root / "jobs.jsonl"; out = root / "out"

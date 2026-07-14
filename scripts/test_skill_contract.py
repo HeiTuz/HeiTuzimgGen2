@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -14,6 +15,15 @@ SPEC.loader.exec_module(transport)
 
 
 class SkillContractTests(unittest.TestCase):
+    @staticmethod
+    def _resolved_codex():
+        return SimpleNamespace(
+            command="/usr/bin/codex",
+            source="path",
+            version=(0, 144, 3),
+            provenance={"path": "/usr/bin/codex", "source": "path", "version": [0, 144, 3]},
+        )
+
     def _references(self, root: Path, count: int) -> list[Path]:
         references = []
         for index in range(count):
@@ -24,7 +34,7 @@ class SkillContractTests(unittest.TestCase):
 
     def test_generation_dry_run_resolves_output_without_calling_subprocess(self):
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(transport.shutil, "which", return_value="/usr/bin/codex"), \
+                patch.object(transport, "resolve_codex_command", return_value=self._resolved_codex()), \
                 patch.object(transport.subprocess, "run") as run:
             root = Path(tmp)
             result = transport.run("generate a blue square", root / "result.png", [])
@@ -35,7 +45,7 @@ class SkillContractTests(unittest.TestCase):
 
     def test_edit_and_two_to_four_references_are_forwarded(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(
-            transport.shutil, "which", return_value="/usr/bin/codex"
+            transport, "resolve_codex_command", return_value=self._resolved_codex()
         ):
             root = Path(tmp)
             for count in (1, 2, 3, 4):
@@ -58,7 +68,7 @@ class SkillContractTests(unittest.TestCase):
     def test_success_without_output_is_a_response_error(self):
         completed = transport.subprocess.CompletedProcess([], 0, stdout="{}", stderr="")
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(transport.shutil, "which", return_value="/usr/bin/codex"), \
+                patch.object(transport, "resolve_codex_command", return_value=self._resolved_codex()), \
                 patch.object(transport.subprocess, "run", return_value=completed), \
                 patch.dict(transport.os.environ, {transport.APPROVAL_ENV: "1"}, clear=True):
             with self.assertRaisesRegex(transport.TransportError, "did not produce"):

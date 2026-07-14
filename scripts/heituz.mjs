@@ -73,17 +73,16 @@ Commands:
   update       Refresh HeiTuzImgGen2 and HeiTuzMPW from their canonical GitHub repositories.
                Codex updates only when missing or when --codex is supplied.
   status       Print the recorded installation targets.
-  vision-qc    Show safe session-only Google AI Studio key setup or API-key status.
+  vision-qc    Show the host-default Vision QC mode or setup guidance.
 `);
   process.exit(code);
 }
 
 export function imggenUpdateArgs(manifest, { interactive }) {
   const args = ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex"];
-  if (!interactive) {
-    const visionQc = manifest.vision_qc_requested || manifest.vision_qc_mode || "off";
-    args.push("--vision-qc", visionQc);
-  }
+  const previous = manifest.vision_qc_requested || manifest.vision_qc_mode;
+  const visionQc = previous === "off" ? "off" : "auto";
+  args.push("--vision-qc", visionQc);
   return args;
 }
 

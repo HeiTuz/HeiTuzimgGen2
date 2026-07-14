@@ -74,15 +74,14 @@ class SkillContractTests(unittest.TestCase):
             with self.assertRaisesRegex(transport.TransportError, "did not produce"):
                 transport.run("generate", Path(tmp) / "missing.png", [], execute=True)
 
-    def test_model_label_and_telegram_document_rules_are_explicit(self):
+    def test_model_label_and_file_delivery_rules_are_explicit(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         contract = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")
-        combined = skill + contract
+        combined = (skill + "\n" + contract).lower()
         self.assertIn("model_identity_attested", combined)
         self.assertIn("observed_model", combined)
         self.assertIn("never turn a requested label into an attestation", combined)
-        self.assertIn("send_message", combined)
-        self.assertIn("document/file attachment", combined)
+        self.assertIn("file attachment", combined)
         self.assertIn("printing the path is not", combined)
 
     def test_prohibited_fallbacks_are_documented(self):

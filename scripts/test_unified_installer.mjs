@@ -25,9 +25,9 @@ function invoke(args, env = {}, command = process.execPath) {
 try {
   const updateManifest = { imggen2_target: "/tmp/imggen", vision_qc_requested: "gemini-luna" };
   const interactiveUpdate = imggenUpdateArgs(updateManifest, { interactive: true });
-  assert.equal(interactiveUpdate.includes("--vision-qc"), false);
+  assert.deepEqual(interactiveUpdate.slice(-2), ["--vision-qc", "auto"]);
   const automatedUpdate = imggenUpdateArgs(updateManifest, { interactive: false });
-  assert.deepEqual(automatedUpdate.slice(-2), ["--vision-qc", "gemini-luna"]);
+  assert.deepEqual(automatedUpdate.slice(-2), ["--vision-qc", "auto"]);
   // Windows cannot spawn npx.cmd without a shell; the invocation must route through cmd.exe /c.
   assert.deepEqual(npxInvocation(true, ["--yes", "pkg"]), { command: "cmd.exe", args: ["/d", "/s", "/c", "npx", "--yes", "pkg"] });
   assert.deepEqual(npxInvocation(false, ["--yes", "pkg"]), { command: "npx", args: ["--yes", "pkg"] });
@@ -37,11 +37,11 @@ try {
   assert.match(plan, /HeiTuzMPW/);
   const offlineVisionPlan = JSON.parse(invoke(["scripts/install.mjs", "--dry-run", "--vision-qc", "auto", "--offline"], { HEITUZ_TEST_PLATFORM: "linux" }));
   assert.equal(offlineVisionPlan.vision_qc.requested_mode, "auto");
-  assert.equal(offlineVisionPlan.vision_qc.mode, "off");
+  assert.equal(offlineVisionPlan.vision_qc.mode, "auto");
   assert.match(offlineVisionPlan.vision_qc.config, /vision-qc\.json$/);
 
   const target = path.join(temp, "imggen2");
-  invoke(["scripts/install.mjs", "--target", target, "--offline", "--register", "--vision-qc", "gemini-luna"], { HEITUZ_TEST_PLATFORM: "linux" });
+  invoke(["scripts/install.mjs", "--target", target, "--offline", "--register", "--vision-qc", "auto"], { HEITUZ_TEST_PLATFORM: "linux" });
   const manifest = path.join(temp, "config", "heituz", "installation.json");
   const launcher = path.join(temp, ".local", "bin", "heituz");
   assert.equal(fs.existsSync(manifest), true);
@@ -49,20 +49,19 @@ try {
   assert.match(fs.readFileSync(path.join(temp, ".profile"), "utf8"), /heituz user bin/);
   assert.match(fs.readFileSync(path.join(temp, ".zprofile"), "utf8"), /heituz user bin/);
   const visionQcConfig = path.join(target, "vision-qc.json");
-  assert.deepEqual(JSON.parse(fs.readFileSync(visionQcConfig, "utf8")), { version: 1, requested_mode: "gemini-luna", qc_mode: "gemini-luna" });
+  assert.deepEqual(JSON.parse(fs.readFileSync(visionQcConfig, "utf8")), { version: 2, requested_mode: "auto", qc_mode: "auto", reviewer: "host-default-vision" });
   const manifestData = JSON.parse(fs.readFileSync(manifest, "utf8"));
-  assert.equal(manifestData.vision_qc_requested, "gemini-luna");
-  assert.equal(manifestData.vision_qc_mode, "gemini-luna");
+  assert.equal(manifestData.vision_qc_requested, "auto");
+  assert.equal(manifestData.vision_qc_mode, "auto");
   const updater = invoke(["update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
   assert.match(updater, /HeiTuzImgGen2 update/);
-  assert.match(updater, /--vision-qc.*gemini-luna/);
+  assert.match(updater, /--vision-qc.*auto/);
   assert.match(updater, /HeiTuzMPW update/);
   assert.doesNotMatch(updater, /\/Users\/eusin/);
-  const visionQcSetup = invoke(["vision-qc", "setup"], { HEITUZ_TEST_PLATFORM: "linux", GOOGLE_API_KEY: "", GEMINI_API_KEY: "" }, launcher);
-  assert.match(visionQcSetup, /Vision-QC setup \(macOS\/Linux\)/);
-  assert.match(visionQcSetup, /stty -echo/);
-  const visionQcStatus = invoke(["vision-qc", "status"], { HEITUZ_TEST_PLATFORM: "linux", GOOGLE_API_KEY: "", GEMINI_API_KEY: "" }, launcher);
-  assert.deepEqual(JSON.parse(visionQcStatus), { vision_qc: "needs_api_key", api_key_environment: null });
+  const visionQcSetup = invoke(["vision-qc", "setup"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  assert.match(visionQcSetup, /host's default Vision model/);
+  const visionQcStatus = invoke(["vision-qc", "status"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
+  assert.deepEqual(JSON.parse(visionQcStatus), { vision_qc: "auto", reviewer: "host-default-vision" });
   // Offline/test installs without --register must not touch global state.
   const manifestBefore = fs.readFileSync(manifest, "utf8");
   const isolatedTarget = path.join(temp, "imggen2-isolated");
@@ -104,7 +103,7 @@ try {
   assert.equal(fs.existsSync(path.join(windowsBin, "heituz")), false);
   assert.equal(fs.existsSync(path.join(windowsBin, "heituz.mjs")), false);
   assert.equal(fs.existsSync(path.join(appData, "HeiTuz", "installation.json")), true);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(windowsTarget, "vision-qc.json"), "utf8")), { version: 1, requested_mode: "off", qc_mode: "off" });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(windowsTarget, "vision-qc.json"), "utf8")), { version: 2, requested_mode: "off", qc_mode: "off", reviewer: "host-default-vision" });
   console.log("unified install/update dry-run: OK");
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });

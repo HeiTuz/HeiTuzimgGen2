@@ -5,7 +5,7 @@
 The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `image_generation` tool. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
 `HeiTuzMPW` owns image-prompt compilation when installed. HeiTuzimgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
 
-No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. The sole API-key exception is post-generation QC through `gemini_image_qc.py`, which reads an already configured `GOOGLE_API_KEY`/`GEMINI_API_KEY`, sends it only in the `x-goog-api-key` header, and never persists or reports it. The installed `vision-qc.json` contains only `version`, `requested_mode`, and `qc_mode`; credentials or unknown fields fail closed. `auto` resolves to `gemini-luna` when both a current-session key and Codex are available, `gemini` or `luna` when only one is available, and `off` otherwise. Authentication failures in explicit Gemini modes are terminal and must be reported without raw subprocess output.
+No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Post-generation QC is delegated to the host's default Vision tool. The installed `vision-qc.json` contains only version, mode, and reviewer-routing metadata; credentials or provider-specific model names are forbidden. `auto` follows the live host Vision configuration and `off` prevents unreviewed outputs from becoming final.
 
 ## Model-label honesty
 
@@ -25,7 +25,7 @@ Dry-run is always allowed and is the default.
 
 **Production batch:** the user's explicit product-folder or batch request authorizes the bounded manifest. Dry-run and digests remain available for diagnostics and provenance, not as a mandatory approval round-trip. Run with `--execute`; unchanged-scope retries continue automatically. Ask again only when count/scope expands, provider or paid route changes, originals would be overwritten, or an external/public action is added.
 
-Legacy approval markers may still be accepted by old wrappers but are not required and should not be persisted. A generation failure does not authorize a provider/model fallback or an unbounded automatic retry. A direct Luna review is permitted only for resolved mode `luna`; Gemini→Luna fallback is permitted only for `gemini-luna`, after an approved Gemini timeout, HTTP 429, or HTTP 5xx, and at most once. Mode `gemini` never falls back. Hard 4xx and malformed Gemini responses fail closed. Vision inspection and Telegram delivery remain separately approved external actions.
+Legacy approval markers may still be accepted by old wrappers but are not required and should not be persisted. A generation failure does not authorize a provider/model fallback or an unbounded automatic retry. Vision QC follows the host's active default model and must return structured evidence before acceptance. External publication or delivery remains a separate action.
 
 ## Production batch ownership
 

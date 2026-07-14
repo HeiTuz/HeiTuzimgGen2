@@ -21,10 +21,11 @@ Generate or edit images through the official Codex CLI with an authenticated Cha
 - dry-run-first transport with exclusive output creation and session-scoped artifact provenance;
 - resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
 - explicit-only Grok image generation through Hermes native `image_generate`, gated on `xai-oauth`, with exact-N queueing that starts at 3 active jobs and never exceeds 5;
-- required post-generation Gemini/Luna image QC before `vision_analyze`, with thumbnail-only review, strict structured output, and provenance-bound reports;
+- required post-generation QC through the host's default Vision tool in `auto` mode, with thumbnail-only review, strict structured output, and provenance-bound reports;
 - optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by whole-set selection at a minimum 80% family-similarity gate.
 
-Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. The post-generation QC exception may use the preconfigured Google Gemini Developer API key for `gemini-3-flash-preview`; its only fallback is exactly one `gpt-5.6-luna` Codex-subscription review after a Gemini timeout, HTTP 429, or HTTP 5xx. Hard 4xx and malformed responses fail closed. Never fall back outside those explicit contracts. never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use `send_message` with a document/file attachment; printing the path is not delivery evidence.
+Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. Post-generation QC uses the host's currently configured default Vision model; ImgGen2 does not pin a separate reviewer model or provider. Never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use a supported file attachment; printing the path is not delivery evidence.
+Never fall back to a different generation provider or a pinned reviewer model when the configured route fails.
 
 ## Boundaries
 
@@ -80,26 +81,13 @@ python scripts/codex_subscription_batch.py \
 
 The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
-### Post-generation Gemini/Luna image QC
+### Post-generation Vision QC
 
-Run `gemini_image_qc.py` for every generated delivery candidate **before** `vision_analyze`. The full original remains the delivery artifact and is never uploaded or modified. QC uses only an ephemeral JPEG thumbnail with a 1024 px long-edge limit and a 300 KiB cap.
+For every generated delivery candidate, invoke the host's default Vision analysis tool in `auto` mode. On Hermes this is `vision_analyze`, which follows the live `auxiliary.vision` configuration instead of pinning a reviewer inside ImgGen2. The full original remains the delivery artifact and is never modified.
 
-The installed `vision-qc.json` contains only `{version, requested_mode, qc_mode}` and never credentials. `auto` resolves to `gemini-luna` when both a Gemini key and Codex are available, `gemini` when only a key is available, `luna` when only Codex is available, and `off` otherwise. `gemini-luna` permits the bounded Luna fallback, `gemini` never falls back, `luna` uses direct Codex-subscription review, and `off` blocks QC fail-closed. `--qc-mode` overrides `HEITUZ_VISION_QC_MODE`, which overrides the installed mode; every resolved mode is included in its approval hash. `heituz vision-qc setup` displays safe session-only credential setup.
-Gemini uses `gemini-3-flash-preview` with the key only in `x-goog-api-key`; a Gemini timeout, HTTP 429, or HTTP 5xx permits exactly one Luna retry. Hard 4xx and malformed Gemini responses fail closed. The dry-run `request_sha256` remains provenance evidence; QC runs as an internal consequence of the authorized generation and needs no second approval.
+The installed `vision-qc.json` contains `{version: 2, requested_mode: "auto", qc_mode: "auto", reviewer: "host-default-vision"}` and no credentials. `auto` is the default in interactive and non-interactive installs. `off` is the only alternative and blocks acceptance because unreviewed outputs cannot be delivered as final.
 
-```bash
-python scripts/gemini_image_qc.py output.png \
-  --brief "Source-faithful product image on a clean white background" \
-  --expected-text "Navy Essential Tee" \
-  --id navy-front
-
-python scripts/gemini_image_qc.py output.png \
-  --brief "Source-faithful product image on a clean white background" \
-  --expected-text "Navy Essential Tee" \
-  --id navy-front --execute
-```
-
-The one-line report records the selected route, requested primary/fallback models, original and thumbnail dimensions/bytes/hashes, standard four-axis QC, and observations. Requested model names are not model-identity evidence; `model_identity_attested` remains false.
+Review the image against the requested brief, source fidelity, text accuracy when applicable, material realism, layout, and cross-image consistency. Require a structured result containing the four axis scores, pass/fail, observed defects, and the smallest regeneration delta. The review report records the image hash and dimensions; requested model names are not model-identity evidence.
 
 ### Provider routing quick reference
 

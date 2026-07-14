@@ -5,12 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createInterface } from "node:readline/promises";
+
 
 const source = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
 const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "references", "scripts"]);
-const VISION_QC_MODES = new Set(["auto", "gemini-luna", "gemini", "luna", "off"]);
+const VISION_QC_MODES = new Set(["auto", "off"]);
 
 function usage(code = 0) {
   const out = code === 0 ? console.log : console.error;
@@ -26,7 +26,7 @@ Options:
   --force                Replace an existing ImgGen2 destination
   --skip-codex           Do not install/update the official Codex CLI
   --skip-mpw             Do not install/update HeiTuzMPW
-  --vision-qc <mode>     Configure QC: auto, gemini-luna, gemini, luna, or off
+  --vision-qc <mode>     Configure QC: auto (host default Vision model) or off
   --dry-run              Print the platform plan without writing or downloading
   --offline              Local-copy mode for tests; implies --skip-codex and --skip-mpw
   --register             Also register the global heituz launcher/manifest (default for non-offline installs)
@@ -122,40 +122,14 @@ function ensurePillow(loc, options) {
     );
   }
 }
-function hasGeminiKey() {
-  return Boolean(process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim());
-}
-
-function recommendVisionQc(helper, loc) {
-  const gemini = hasGeminiKey();
-  const luna = helper.codexExists(loc.windows);
-  return gemini && luna ? "gemini-luna" : (gemini ? "gemini" : (luna ? "luna" : "off"));
-}
-
-async function selectVisionQc(options, helper, loc) {
-  const requested = options.visionQc;
-  const recommendation = recommendVisionQc(helper, loc);
-  if (requested) return { requested, effective: requested === "auto" ? recommendation : requested };
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return { requested: "off", effective: "off" };
-  console.log("\nVision QC setup");
-  console.log(`Recommended: ${recommendation}`);
-  console.log("Gemini modes send compact thumbnails to Google. Free-tier inputs may be used for product improvement.");
-  const choices = ["gemini-luna", "gemini", "luna", "off"];
-  choices.forEach((choice, index) => console.log(`  ${index + 1}. ${choice}${choice === recommendation ? " [recommended]" : ""}`));
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = (await rl.question(`Choose [${choices.indexOf(recommendation) + 1}]: `)).trim();
-    const effective = answer ? choices[Number(answer) - 1] : recommendation;
-    if (!effective) throw new Error("Invalid Vision-QC selection.");
-    return { requested: effective, effective };
-  } finally {
-    rl.close();
-  }
+async function selectVisionQc(options) {
+  const requested = options.visionQc || "auto";
+  return { requested, effective: requested };
 }
 
 function configureVisionQc(destination, selection) {
   const config = path.join(destination, "vision-qc.json");
-  fs.writeFileSync(config, JSON.stringify({ version: 1, requested_mode: selection.requested, qc_mode: selection.effective }, null, 2) + "\n", { mode: 0o600 });
+  fs.writeFileSync(config, JSON.stringify({ version: 2, requested_mode: selection.requested, qc_mode: selection.effective, reviewer: "host-default-vision" }, null, 2) + "\n", { mode: 0o600 });
   return config;
 }
 
@@ -169,7 +143,7 @@ async function main() {
   ensurePillow(loc, options);
   const destination = path.resolve(options.target || path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"));
   const mpwTarget = path.resolve(options.mpwTarget || path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"));
-  const visionQc = await selectVisionQc(options, helper, loc);
+  const visionQc = await selectVisionQc(options);
 
   if (options.dryRun) {
     console.log(JSON.stringify({ imggen2_target: destination, mpw_target: mpwTarget, codex: helper.codexInstallCommand(loc.windows), platform: loc.windows ? "windows" : "posix", register: options.register ?? !options.offline, vision_qc: { requested_mode: visionQc.requested, mode: visionQc.effective, config: path.join(destination, "vision-qc.json") } }, null, 2));

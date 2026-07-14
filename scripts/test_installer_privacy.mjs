@@ -26,7 +26,7 @@ function hasExcludedPath(dir) {
 
 try {
   const destination = path.join(temp, "installed");
-  run(process.execPath, ["scripts/install.mjs", "--target", destination]);
+  run(process.execPath, ["scripts/install.mjs", "--target", destination, "--offline"]);
   assert.equal(fs.existsSync(path.join(destination, "SKILL.md")), true);
   assert.equal(fs.existsSync(path.join(destination, "contracts", "v1", "image-production-handoff.schema.json")), true);
   assert.equal(hasExcludedPath(destination), false, "installer copied excluded local state");

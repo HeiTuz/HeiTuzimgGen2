@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -32,9 +33,9 @@ class FakeRunner:
         self.max_active = 0
         self.lock = threading.Lock()
 
-    def __call__(self, prompt, output, images, execute=False):
+    def __call__(self, prompt, output, images, execute=False, codex_bin=None, codex_provenance=None):
         with self.lock:
-            self.calls.append((prompt, output, tuple(images), execute))
+            self.calls.append((prompt, output, tuple(images), execute, codex_bin, codex_provenance))
             self.active += 1
             self.max_active = max(self.max_active, self.active)
         try:
@@ -181,6 +182,19 @@ class BatchManifestTests(unittest.TestCase):
 
 
 class BatchExecutionTests(unittest.TestCase):
+    def setUp(self):
+        self.resolver_patch = patch.object(
+            batch.transport,
+            "resolve_codex_command",
+            return_value=SimpleNamespace(
+                command="/opt/codex",
+                source="explicit",
+                version=(0, 144, 3),
+                provenance={"path": "/opt/codex", "source": "explicit", "version": [0, 144, 3]},
+            ),
+        )
+        self.resolver_patch.start()
+        self.addCleanup(self.resolver_patch.stop)
     def make_manifest(self, root, count=3):
         manifest = root / "jobs.jsonl"
         records = [{"id": f"j{i}", "prompt": f"p{i}", "output_path": f"{i}.png"} for i in range(count)]
@@ -222,6 +236,10 @@ class BatchExecutionTests(unittest.TestCase):
             result = batch.run_batch(manifest, root / "out", runner=runner)
             self.assertEqual(result["mode"], "dry_run")
             self.assertEqual(result["pilot_id"], "j0")
+            self.assertEqual(
+                result["codex_provenance"],
+                {"path": "/opt/codex", "source": "explicit", "version": [0, 144, 3]},
+            )
             self.assertEqual(runner.calls, [])
             self.assertFalse((root / "out").exists())
             with self.assertRaisesRegex(batch.BatchError, "hard_cap=2"):
@@ -241,6 +259,7 @@ class BatchExecutionTests(unittest.TestCase):
             summary = self.approved_run(manifest, root / "out", runner, workers="3")
             self.assertTrue(summary["pilot_failed"])
             self.assertEqual([c[0] for c in runner.calls], ["p0"])
+            self.assertEqual(runner.calls[0][4], "/opt/codex")
             ledger = batch.load_ledger(root / "out" / batch.LEDGER_NAME)
             self.assertEqual(ledger["jobs"]["j0"]["status"], "failed")
             self.assertEqual(ledger["jobs"]["j1"]["status"], "pending")
@@ -339,6 +358,11 @@ class BatchExecutionTests(unittest.TestCase):
                 "workers": "auto", "start": 1, "hard_cap": 8,
                 "ramp_every": 3, "ram_per_worker_gb": 0.5,
                 "approval_sha256": approval,
+                "codex_provenance": {
+                    "path": "/opt/codex",
+                    "source": "explicit",
+                    "version": [0, 144, 3],
+                },
             })
             ledger["jobs"]["j0"]["status"] = "running"
             batch.atomic_write_json(out / batch.LEDGER_NAME, ledger)

@@ -1,89 +1,120 @@
-# HeiTuzimgGen2
+# HeiTuzImgGen2
 
-**ChatGPT subscription image production with receipts, not wishful thinking.**
+## 이미지는 만들고 끝내는 게 아닙니다. **쓸 수 있게 남겨야 합니다.**
 
-HeiTuzimgGen2 uses the official Codex CLI to generate or edit images through an authenticated ChatGPT subscription. It turns image work into a verifiable pipeline: dry-run first, exclusive outputs, session-scoped provenance, bounded batch fan-out, QC gates, and selective retries.
+[![Release](https://img.shields.io/github/v/release/HeiTuz/HeiTuzimgGen2?style=flat-square)](https://github.com/HeiTuz/HeiTuzimgGen2/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/HeiTuz/HeiTuzimgGen2/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/HeiTuz/HeiTuzimgGen2/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-black?style=flat-square)](LICENSE)
 
-## What ships
+**HeiTuzImgGen2**는 ChatGPT 구독으로 이미지 작업을 더 단단하게 굴리기 위한 제작 스킬입니다.
 
-- Text-to-image, edits, and two-to-four reference compositions
-- No API key or separate image usage account required
-- Dry-run validation before live execution
-- Hash-owned output and resume protection
-- JSONL batch runner with pilot-first fan-out and failed-cut retries
-- Independent four-axis and promotional QC reconciliation
-- Optional dynamic apparel full-set preparation from Vision role maps
+한 장 만들고 결과가 어디서 나왔는지 놓치는 방식 대신, 제품 사진·캠페인 비주얼·편집 이미지·다량 제작을 **확인 가능한 결과물**로 남깁니다.
 
-The browser-based apparel executor is intentionally adapter-gated. It is dry-run by default and requires an explicit external browser adapter for a live call; it never silently switches providers.
+## 이런 이미지를 만듭니다
 
-## Install
+### 한 장을 제대로 만듭니다
 
-Requirements: Python 3.10+, the official `codex` CLI, and an authenticated ChatGPT subscription session.
+텍스트로 새 이미지를 만들거나, 레퍼런스 이미지를 바탕으로 원하는 장면을 편집합니다.
 
-```bash
-npx --yes github:HeiTuz/HeiTuzimgGen2#v1.6.0
-# or
-bunx github:HeiTuz/HeiTuzimgGen2#v1.6.0
-```
+제품의 핵심 디테일을 지키고 싶을 때, 인물의 정체성을 살리고 싶을 때, 장면의 분위기만 갈아끼우고 싶을 때. 요청의 중심을 놓치지 않게 제작 흐름을 잡습니다.
 
-Install into a specific directory:
+### 여러 장을 한 세트로 만듭니다
 
-```bash
-npx --yes github:HeiTuz/HeiTuzimgGen2#v1.6.0 -- --target "$HOME/.hermes/skills/HeiTuzimgGen2"
-```
+제품컷, 룩북, 카드뉴스, 광고 소재처럼 여러 장이 필요한 작업은 한 장씩 운에 맡기면 망가집니다.
 
-The forwarded target form also works with Bun:
+HeiTuzImgGen2는 같은 목표를 공유하는 이미지들을 묶어 관리해, **세트 전체가 한 브랜드처럼 보이게** 만듭니다.
 
-```bash
-bunx github:HeiTuz/HeiTuzimgGen2#v1.6.0 -- --target "$HOME/.hermes/skills/HeiTuzimgGen2"
-```
+### 제품 사진을 더 믿을 수 있게 만듭니다
 
-## Start with a dry-run
+제품 사진에서 중요한 건 새 옷을 발명하는 게 아니라, 원래 제품을 알아볼 수 있게 지키는 겁니다.
 
-```bash
-python scripts/codex_subscription_transport.py \
-  --prompt "A blue ceramic cup on natural linen"
-```
+앞·뒤·소재·디테일을 빠뜨리지 않고, 최종 폴더에는 **선택된 컷만 남기는** 흐름으로 제품 이미지 작업을 정리합니다.
 
-Add `--image` once per reference for an edit or composition. A live call requires `--execute` and the current approval marker documented in [references/execution-contract.md](references/execution-contract.md).
+### 결과가 이상하면 이유를 남깁니다
 
-## Portable compiler handoff
+좋지 않은 이미지를 조용히 섞어두지 않습니다.
 
-HeiTuzimgGen2 remains standalone: prompts can be passed directly to the single-image or batch commands above. When [HeiTuzMPW](https://github.com/HeiTuz/HeiTuzMPW) is installed, it can compile an image request into the shared, provider-neutral `heituz-image-production-handoff/v1` JSON contract. Validate and consume that handoff with:
+완성도, 제품 충실도, 구도, 일관성을 기준으로 결과를 점검하고, 실패한 부분만 다시 다룹니다. 그래서 무작정 다시 돌리는 비용과 시간을 줄일 수 있습니다.
+
+## 이런 사람에게 맞습니다
+
+- ChatGPT로 이미지 만들지만 결과 관리까지 제대로 하고 싶은 사람
+- 제품 사진·패션 비주얼·브랜드 콘텐츠를 여러 장 제작하는 사람
+- 레퍼런스를 쓰면서도 핵심 요소가 무너지는 게 싫은 사람
+- 생성 이미지와 최종 납품 이미지를 깔끔하게 분리하고 싶은 사람
+- “만들었다”가 아니라 “검수해서 쓸 수 있다”를 원하는 사람
+
+## 30초 설치
+
+**한 번 설치하면 Codex CLI + ImgGen2 + MPW가 같이 붙습니다.**
 
 ```bash
-python scripts/consume_image_handoff.py request.json --output-root "$PWD/generated"
+npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
+# 또는
+bunx --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
 ```
 
-The command is dry-run by default and uses the same approval and transport boundary as direct invocation. The shared handoff contains an operation, compiled prompt, portable output basename, up to 20 portable image references, and optional string metadata; it contains no machine routing or credentials. This executor currently accepts up to four local references and a PNG output, failing closed on other valid contract capabilities. The canonical schema is [contracts/v1/image-production-handoff.schema.json](contracts/v1/image-production-handoff.schema.json). HTTPS references validate for interchange but must be materialized as relative local files before execution.
+설치기는 운영체제에 맞춰 공식 Codex 설치 경로를 사용합니다.
 
-## Batch production
+| 환경 | Codex 기본 경로 | `heituz` 명령 |
+| --- | --- | --- |
+| macOS / Linux | `~/.local/bin/codex` | `~/.local/bin/heituz` |
+| Windows | `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` | `%LOCALAPPDATA%\HeiTuz\bin\heituz.cmd` |
+
+macOS/Linux는 새 Terminal을 열면 바로 됩니다. Windows는 설치 후 출력되는 경로를 사용자 PATH에 한 번 추가하면 어디서나 `heituz`를 쓸 수 있습니다.
+
+## 업데이트도 한 줄
 
 ```bash
-python scripts/codex_subscription_batch.py \
-  --manifest "$PWD/jobs.jsonl" \
-  --output-root "$PWD/product-batch" \
-  --workers auto
+heituz update
 ```
 
-The first cut runs alone. Only an independent QC pass opens bounded fan-out. Read [references/batch-production-contract.md](references/batch-production-contract.md) before submitting a live batch.
-
-## Apparel full-set workflow
-
-For product folders, task count is the number of unique normalized `color_identity` values in Vision records labeled `color_front`—not a fixed number and never inferred from filenames. Every task gets the same complete folder and independently creates its entire candidate set. A selector evaluates cross-set combinations against source fidelity and a minimum 80% family-similarity gate.
-
-## Verify
+이 명령은 **HeiTuzImgGen2와 HeiTuzMPW를 함께 갱신**합니다. Codex까지 강제로 갱신하려면:
 
 ```bash
-python -m unittest discover -s scripts -p 'test_*.py' -v
-python -m py_compile scripts/*.py
+heituz update --codex
 ```
 
-The suite is network-free. It covers transport safety, batch recovery, QC gates, dynamic apparel task planning, immutable source inventory, disjoint paths, selection, and runtime-cap packing.
+무엇을 실행할지만 보고 싶다면:
 
-## Security boundary
+```bash
+heituz update --dry-run
+```
 
-The skill does not inspect authentication files, extract cookies, call private endpoints, use API-key billing, or expose raw subprocess output in user-facing errors.
+특정 폴더에 ImgGen2만 따로 설치하는 기존 경로도 남아 있습니다.
+
+```bash
+npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2 -- --target "$HOME/.hermes/skills/HeiTuzImgGen2" --skip-mpw --skip-codex
+```
+
+## 이렇게 시작하세요
+
+```text
+이 제품 사진을 정사각형 상세페이지 컷으로 정리해줘.
+제품의 색·실루엣·소재·봉제 디테일은 바꾸지 말고, 배경만 자연스럽게 확장해.
+```
+
+```text
+이 인물을 유지한 채, 비 오는 도쿄 골목의 패션 에디토리얼 한 컷으로 만들어줘.
+```
+
+```text
+이 브랜드의 여름 캠페인용 이미지를 6장 만들어줘.
+모든 컷이 같은 세계관과 색감으로 보이게 해.
+```
+
+```text
+이 레퍼런스들을 합쳐 프리미엄 향수 광고 비주얼을 만들어줘.
+제품 병의 형태와 라벨은 정확히 유지해.
+```
+
+## 제작은 과감하게, 결과 관리는 냉정하게
+
+좋은 이미지는 한 번의 운으로 끝나지 않습니다.
+
+**원하는 장면을 만들고, 필요한 기준으로 고르고, 실제로 쓸 수 있는 컷만 남깁니다.**
+
+HeiTuzImgGen2는 그 흐름을 위해 만들어졌습니다.
 
 ## License
 

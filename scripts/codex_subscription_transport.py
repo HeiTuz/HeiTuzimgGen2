@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 from typing import Mapping, Sequence
+from codex_cli_resolver import CodexResolutionError, ResolvedCodex, resolve_codex_command
 
 GENERATED_IMAGES_DIR = Path.home() / ".codex" / "generated_images"
 DOWNLOADS_DIR = Path.home() / "Downloads"
@@ -83,10 +84,19 @@ class TransportError(RuntimeError):
     pass
 
 
-def build_command(prompt: str, output: Path, images: Sequence[Path]) -> list[str]:
-    codex = shutil.which("codex")
-    if not codex:
-        raise TransportError("Official Codex CLI is not installed or not on PATH.")
+def build_command(
+    prompt: str,
+    output: Path,
+    images: Sequence[Path],
+    codex_bin: str | Path | None = None,
+    *,
+    resolved_codex: ResolvedCodex | None = None,
+) -> list[str]:
+    try:
+        resolved = resolved_codex or resolve_codex_command(codex_bin)
+    except CodexResolutionError as exc:
+        raise TransportError(str(exc)) from None
+    codex = resolved.command
     instruction = (
         "Use Codex's built-in image_generation tool to create or edit exactly one image. "
         "If reference images are attached, use them as the basis for the edit or combination. "
@@ -290,7 +300,25 @@ def plan_qc_regeneration(
     }
 
 
-def request_summary(command: Sequence[str], output: Path, images: Sequence[Path]) -> dict[str, object]:
+def _resolved_provenance(resolved: object) -> dict[str, object]:
+    provenance = getattr(resolved, "provenance", None)
+    if isinstance(provenance, Mapping):
+        return dict(provenance)
+    command = getattr(resolved, "command", None)
+    source = getattr(resolved, "source", "provided")
+    version = getattr(resolved, "version", [])
+    return {
+        "path": str(command),
+        "source": str(source),
+        "version": list(version) if isinstance(version, tuple) else version,
+    }
+
+def request_summary(
+    command: Sequence[str],
+    output: Path,
+    images: Sequence[Path],
+    codex_provenance: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "transport": "official-codex-cli-subscription",
         "transport_state": "dry_run",
@@ -300,6 +328,7 @@ def request_summary(command: Sequence[str], output: Path, images: Sequence[Path]
         "output": str(output),
         "reference_count": len(images),
         "command": ["<prompt>" if item.startswith("User image request:") else item for item in command[:-1]] + ["<image-instruction>"],
+        "codex_provenance": dict(codex_provenance or {}),
         "live": False,
         "model_identity_attested": False,
         **_not_evaluated_qc(),
@@ -459,12 +488,44 @@ def classify_cli_failure(stdout: str, stderr: str) -> str:
 
 
 
-def run(prompt: str, output: Path, images: Sequence[Path], execute: bool = False) -> dict[str, object]:
+def run(
+    prompt: str,
+    output: Path,
+    images: Sequence[Path],
+    execute: bool = False,
+    codex_bin: str | Path | None = None,
+    *,
+    codex_provenance: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     output = output.expanduser().resolve()
     refs = [image.expanduser().resolve() for image in images]
     validate_request(prompt, output, refs)
-    command = build_command(prompt, output, refs)
-    summary = request_summary(command, output, refs)
+    try:
+        if codex_provenance is None:
+            resolved = resolve_codex_command(codex_bin)
+        else:
+            raw_path = codex_provenance.get("path")
+            raw_source = codex_provenance.get("source")
+            raw_version = codex_provenance.get("version")
+            if not isinstance(raw_path, str) or not Path(raw_path).is_absolute():
+                raise CodexResolutionError("Codex provenance path must be absolute.")
+            if not isinstance(raw_source, str) or not isinstance(raw_version, (list, tuple)):
+                raise CodexResolutionError("Codex provenance is malformed.")
+            if len(raw_version) != 3 or any(
+                isinstance(part, bool) or not isinstance(part, int) for part in raw_version
+            ):
+                raise CodexResolutionError("Codex provenance version is malformed.")
+            resolved = ResolvedCodex(
+                command=str(Path(raw_path).resolve(strict=False)),
+                source=raw_source,
+                version=tuple(raw_version),  # type: ignore[arg-type]
+            )
+            if codex_bin is not None and str(Path(codex_bin).resolve(strict=False)) != resolved.command:
+                raise CodexResolutionError("Codex executable path does not match its provenance.")
+    except CodexResolutionError as exc:
+        raise TransportError(str(exc)) from None
+    command = build_command(prompt, output, refs, resolved_codex=resolved)
+    summary = request_summary(command, output, refs, _resolved_provenance(resolved))
     if not execute:
         return summary
     if os.environ.get(APPROVAL_ENV) != "1":
@@ -526,13 +587,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--batch-dir", type=Path, help="Folder-based batch root; outputs go to a dated subfolder inside it")
     parser.add_argument("--image", action="append", default=[], type=Path)
     parser.add_argument("--execute", action="store_true", help="Perform the approved live call")
+    parser.add_argument("--codex-bin", type=Path, help="Explicit official Codex CLI executable")
     args = parser.parse_args(argv)
     if args.output is not None and args.batch_dir is not None:
         print(json.dumps({"error": "Use either --output or --batch-dir, not both."}), file=sys.stderr)
         return 2
     try:
         output = resolve_output(args.prompt, args.output, args.batch_dir)
-        print(json.dumps(run(args.prompt, output, args.image, args.execute), indent=2))
+        print(json.dumps(run(args.prompt, output, args.image, args.execute, args.codex_bin), indent=2))
     except TransportError as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 2

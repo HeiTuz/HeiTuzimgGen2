@@ -462,6 +462,8 @@ def _run_one(
     ledger_lock: threading.Lock,
     limiter: AdaptiveLimiter,
     runner: Callable[..., Mapping[str, object]],
+    codex_bin: str,
+    codex_provenance: Mapping[str, object],
 ) -> tuple[str, str]:
     states = ledger["jobs"]
     assert isinstance(states, dict)
@@ -477,7 +479,14 @@ def _run_one(
             atomic_write_json(ledger_path, ledger)
         try:
             job.output.parent.mkdir(parents=True, exist_ok=True)
-            result = runner(job.prompt, job.output, list(job.images), execute=True)
+            result = runner(
+                job.prompt,
+                job.output,
+                list(job.images),
+                execute=True,
+                codex_bin=codex_bin,
+                codex_provenance=codex_provenance,
+            )
             if result.get("transport_state") != "succeeded":
                 raise BatchError("Transport did not report succeeded state.")
             digest, size = file_digest(job.output)
@@ -528,6 +537,10 @@ def build_summary(ledger: Mapping[str, object]) -> dict[str, object]:
         })
     return {
         "manifest_sha256": ledger.get("manifest_sha256"),
+        "codex_provenance": dict(
+            ledger.get("config", {}).get("codex_provenance", {})
+            if isinstance(ledger.get("config"), dict) else {}
+        ),
         "updated_at": ledger.get("updated_at"),
         "pilot_id": ledger.get("pilot_id"),
         "awaiting_pilot_qc": bool(ledger.get("awaiting_pilot_qc")),
@@ -537,7 +550,16 @@ def build_summary(ledger: Mapping[str, object]) -> dict[str, object]:
 
 
 def summary_markdown(summary: Mapping[str, object]) -> str:
-    lines = ["# HeiTuzimgGen2 batch summary", "", f"Manifest: `{summary['manifest_sha256']}`", "", "| id | status | attempts | QC | output | failure |", "|---|---:|---:|---:|---|---|"]
+    provenance = summary.get("codex_provenance", {})
+    lines = [
+        "# HeiTuzimgGen2 batch summary",
+        "",
+        f"Manifest: `{summary['manifest_sha256']}`",
+        f"Codex: `{provenance.get('path')}` ({provenance.get('source')}, version {provenance.get('version')})",
+        "",
+        "| id | status | attempts | QC | output | failure |",
+        "|---|---:|---:|---:|---|---|",
+    ]
     for item in summary["items"]:
         lines.append(
             f"| {item['id']} | {item['status']} | {item['attempts']} | {item['qc_status']} | "
@@ -574,15 +596,22 @@ def run_batch(
     ram_per_worker_gb: float = 0.5,
     runner: Callable[..., Mapping[str, object]] = transport.run,
     ledger_path: Path | None = None,
+    codex_bin: str | Path | None = None,
 ) -> dict[str, object]:
     output_root = output_root.expanduser().resolve()
     jobs, manifest_hash = load_manifest(manifest, output_root)
     if start < 1 or ramp_every < 1:
         raise BatchError("start and ramp_every must be positive")
     planned_target = resolve_worker_target(len(jobs), workers, hard_cap, ram_per_worker_gb)
+    try:
+        resolved_codex = transport.resolve_codex_command(codex_bin)
+    except transport.CodexResolutionError as exc:
+        raise BatchError(str(exc)) from None
+    codex_provenance = resolved_codex.provenance
     config = {
         "workers": workers, "start": start, "hard_cap": hard_cap,
         "ramp_every": ramp_every, "ram_per_worker_gb": ram_per_worker_gb,
+        "codex_provenance": codex_provenance,
     }
     approval_hash = approval_digest(manifest_hash, workers, start, hard_cap, ramp_every, ram_per_worker_gb)
     config["approval_sha256"] = approval_hash
@@ -590,6 +619,7 @@ def run_batch(
         return {
             "mode": "dry_run", "live": False, "manifest_sha256": manifest_hash,
             "approval_sha256": approval_hash,
+            "codex_provenance": dict(codex_provenance),
             "approval_env": BATCH_APPROVAL_ENV, "jobs": len(jobs), "pilot_id": jobs[0].id,
             "worker_target": planned_target,
             "worker_start": min(start, planned_target),
@@ -632,7 +662,14 @@ def run_batch(
         try:
             if pilot_state["status"] == "pending":
                 _, pilot_status = _run_one(
-                    pilot, ledger, ledger_path, ledger_lock, AdaptiveLimiter(1, 1, 1), runner
+                    pilot,
+                    ledger,
+                    ledger_path,
+                    ledger_lock,
+                    AdaptiveLimiter(1, 1, 1),
+                    runner,
+                    resolved_codex.command,
+                    codex_provenance,
                 )
                 if pilot_status != "succeeded":
                     ledger["pilot_failed"] = True
@@ -666,7 +703,20 @@ def run_batch(
             target = resolve_worker_target(len(pending), workers, hard_cap, ram_per_worker_gb)
             limiter = AdaptiveLimiter(target, start, ramp_every)
             with ThreadPoolExecutor(max_workers=target) as pool:
-                futures = [pool.submit(_run_one, job, ledger, ledger_path, ledger_lock, limiter, runner) for job in pending]
+                futures = [
+                    pool.submit(
+                        _run_one,
+                        job,
+                        ledger,
+                        ledger_path,
+                        ledger_lock,
+                        limiter,
+                        runner,
+                        resolved_codex.command,
+                        codex_provenance,
+                    )
+                    for job in pending
+                ]
                 for future in as_completed(futures):
                     future.result()
         finally:
@@ -797,6 +847,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--hard-cap", type=int, default=8)
     parser.add_argument("--ramp-every", type=int, default=3)
     parser.add_argument("--ram-per-worker-gb", type=float, default=0.5)
+    parser.add_argument("--codex-bin", type=Path, help="Explicit official Codex CLI executable")
     parser.add_argument("--qc-results", type=Path)
     parser.add_argument("--retry-manifest", type=Path)
     parser.add_argument("--ledger", type=Path, help="Ledger path contained by output root; use a new ledger for retry manifests")
@@ -811,6 +862,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.manifest, args.output_root, execute=args.execute, workers=args.workers,
                 start=args.start, hard_cap=args.hard_cap, ramp_every=args.ramp_every,
                 ram_per_worker_gb=args.ram_per_worker_gb, ledger_path=args.ledger,
+                codex_bin=args.codex_bin,
             )
             if args.retry_manifest and args.execute:
                 jobs, _ = load_manifest(args.manifest, args.output_root)

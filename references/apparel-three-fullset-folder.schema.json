@@ -4,7 +4,7 @@
   "title": "HeiTuzimgGen2 apparel dynamic full-set folder contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "folder_id", "source_folder", "sources", "vision_role_map", "heituzmpw_folder_master", "qc_contract", "outputs"],
+  "required": ["schema_version", "folder_id", "source_folder", "sources", "heituzmpw_folder_master", "qc_contract", "outputs"],
   "properties": {
     "schema_version": {"const": 1},
     "folder_id": {"type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$"},
@@ -26,6 +26,7 @@
     },
     "normalized_color_identity": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
     "unique_color_count": {"type": "integer", "minimum": 1},
+    "candidate_attempt_count": {"type": "integer", "minimum": 1, "default": 3},
     "heituzmpw_folder_master": {"type": "string", "minLength": 1},
     "qc_contract": {"type": "string", "minLength": 1},
     "outputs": {

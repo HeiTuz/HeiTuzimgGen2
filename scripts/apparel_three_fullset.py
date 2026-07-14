@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = 1
 MIN_FAMILY_SIMILARITY = 0.80
+DEFAULT_CANDIDATE_ATTEMPTS = 3
 SOURCE_IMAGE_SUFFIXES = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
 
 
@@ -63,10 +64,10 @@ def candidate_sets_for_count(task_count: int) -> tuple[str, ...]:
 
 
 def candidate_sets_for_shared_contract(shared: dict[str, Any]) -> tuple[str, ...]:
-    identities = shared.get("color_identities")
-    if not isinstance(identities, list) or not identities:
-        raise ContractError("blocked: shared contract has no dynamic color identities")
-    return candidate_sets_for_count(len(identities))
+    attempts = shared.get("candidate_attempt_count", DEFAULT_CANDIDATE_ATTEMPTS)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        raise ContractError("blocked: candidate_attempt_count must be a positive integer")
+    return candidate_sets_for_count(attempts)
 
 
 def _coordinator_candidate_sets(coordinator: dict[str, Any], shared: dict[str, Any]) -> tuple[str, ...]:
@@ -75,13 +76,15 @@ def _coordinator_candidate_sets(coordinator: dict[str, Any], shared: dict[str, A
     candidate_sets = coordinator.get("candidate_sets")
     task_specs = coordinator.get("task_specs")
     if task_count != len(expected_sets):
-        raise ContractError("coordinator task_count does not match the shared dynamic color count")
+        raise ContractError("coordinator task_count does not match candidate_attempt_count")
     if candidate_sets != list(expected_sets):
-        raise ContractError("coordinator candidate_sets do not match the shared dynamic color count")
+        raise ContractError("coordinator candidate_sets do not match candidate_attempt_count")
     if not isinstance(task_specs, list) or len(task_specs) != task_count or not all(isinstance(p, str) for p in task_specs):
         raise ContractError("coordinator task_specs do not match its dynamic task_count")
     if coordinator.get("color_identities") != shared.get("color_identities"):
         raise ContractError("coordinator color identities do not match the shared contract")
+    if coordinator.get("candidate_attempt_count") != shared.get("candidate_attempt_count"):
+        raise ContractError("coordinator candidate_attempt_count does not match the shared contract")
     return expected_sets
 
 
@@ -182,7 +185,21 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
 
     role_map = raw.get("vision_role_map")
     if not isinstance(role_map, list) or not role_map:
-        raise ContractError("vision_role_map must be a non-empty list")
+        role_map = []
+        for name in sorted(seen_sources):
+            stem = Path(name).stem.casefold()
+            if stem == "f1":
+                role_map.append({"file": name, "role": "color_front", "color_identity": "default"})
+            elif stem == "b1":
+                role_map.append({"file": name, "role": "main_back", "color_identity": "default"})
+            elif stem.startswith("c") and stem[1:].isdigit():
+                role_map.append({"file": name, "role": "color_front", "color_identity": stem})
+            elif stem.startswith("d") and stem[1:].isdigit():
+                role_map.append({"file": name, "role": "fabric_detail", "color_identity": "default"})
+            elif stem.startswith("s") and stem[1:].isdigit():
+                role_map.append({"file": name, "role": "composite_source", "color_identity": "default"})
+        if not role_map:
+            raise ContractError("vision_role_map is missing and no f1/b1/cN/dN/sN source roles were found")
     for record in role_map:
         if not isinstance(record, dict):
             raise ContractError("vision_role_map records must be objects")
@@ -190,6 +207,9 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
         if role_file not in seen_sources:
             raise ContractError(f"vision_role_map file is not in complete source inventory: {role_file}")
     color_identities = color_identities_from_role_map(role_map)
+    attempts = raw.get("candidate_attempt_count", DEFAULT_CANDIDATE_ATTEMPTS)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        raise ContractError("candidate_attempt_count must be a positive integer")
     reported_identities = raw.get("normalized_color_identity")
     if reported_identities is not None:
         if reported_identities != color_identities:
@@ -209,7 +229,8 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
         "sources": sources,
         "vision_role_map": role_map,
         "color_identities": color_identities,
-        "task_count": len(color_identities),
+        "candidate_attempt_count": attempts,
+        "task_count": attempts,
         "heituzmpw_folder_master": folder_master,
         "qc_contract": qc_contract,
         "outputs": outputs,
@@ -255,7 +276,7 @@ def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
         atomic_json(package_path, shared)
 
     task_specs = []
-    for task_index, (set_name, color_identity) in enumerate(zip(candidate_sets, shared["color_identities"]), start=1):
+    for task_index, set_name in enumerate(candidate_sets, start=1):
         candidate_root = folder_root / set_name
         candidate_root.mkdir(parents=True, exist_ok=True)
         spec = {
@@ -264,7 +285,8 @@ def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
             "task_count": len(candidate_sets),
             "candidate_set": set_name,
             "candidate_sets": list(candidate_sets),
-            "color_identity": color_identity,
+            "color_identities": shared["color_identities"],
+            "attempt_index": task_index,
             "candidate_root": str(candidate_root),
             "shared_contract_path": str(package_path),
             "shared_contract_sha256": shared_sha,
@@ -286,6 +308,7 @@ def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
         "task_count": len(candidate_sets),
         "candidate_sets": list(candidate_sets),
         "color_identities": shared["color_identities"],
+        "candidate_attempt_count": shared["candidate_attempt_count"],
         "output_inventory": [o["filename"] for o in shared["outputs"]],
         "task_specs": task_specs,
         "selector_input": str(folder_root / "vision-selector-report.json"),
@@ -477,30 +500,27 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
         raise ContractError("Vision report outputs map is required")
     similarities = _similarity_map(report)
 
-    options: list[list[dict[str, Any]]] = []
-    for output in outputs:
-        per_output = assessments.get(output["id"], {}).get("candidates", {})
-        valid = []
-        for set_name in candidate_sets:
-            candidate = verified_candidates[set_name][output["id"]]
-            source = candidate["path"]
-            entry = per_output.get(set_name)
-            if not isinstance(entry, dict):
-                continue
-            fidelity, gates = _candidate_quality(entry)
-            if gates:
-                valid.append({"set": set_name, "path": source, "sha256": candidate["sha256"], "size": candidate["size"], "assessment": entry, "fidelity": fidelity})
-        if not valid:
-            raise ContractError(f"no valid candidate for output {output['id']}")
-        options.append(valid)
-
+    # Select one complete candidate set; never mix cuts across attempts.
     best: tuple[tuple[float, float, float], tuple[dict[str, Any], ...]] | None = None
-    for combo in itertools.product(*options):
+    for set_name in candidate_sets:
+        combo: list[dict[str, Any]] = []
+        for output in outputs:
+            candidate = verified_candidates[set_name][output["id"]]
+            entry = assessments.get(output["id"], {}).get("candidates", {}).get(set_name)
+            if not isinstance(entry, dict):
+                combo = []
+                break
+            fidelity, gates = _candidate_quality(entry)
+            if not gates:
+                combo = []
+                break
+            combo.append({"set": set_name, "path": candidate["path"], "sha256": candidate["sha256"], "size": candidate["size"], "assessment": entry, "fidelity": fidelity})
+        if len(combo) != len(outputs):
+            continue
         pair_scores: list[float] = []
         complete = True
         for i, j in itertools.combinations(range(len(outputs)), 2):
-            a, b = combo[i], combo[j]
-            key = (outputs[i]["id"], a["set"], outputs[j]["id"], b["set"])
+            key = (outputs[i]["id"], set_name, outputs[j]["id"], set_name)
             if key not in similarities:
                 complete = False
                 break
@@ -512,11 +532,12 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             continue
         fidelity_sum = sum(c["fidelity"] for c in combo)
         average_similarity = sum(pair_scores) / len(pair_scores) if pair_scores else 1.0
-        score = (fidelity_sum, min_similarity, average_similarity)
-        if best is None or score > best[0]:
-            best = (score, combo)
+        score0 = (fidelity_sum, min_similarity, average_similarity)
+        candidate_combo = tuple(combo)
+        if best is None or score0 > best[0]:
+            best = (score0, candidate_combo)
     if best is None:
-        raise ContractError("no complete candidate combination passes the 80% family-similarity gate")
+        raise ContractError("no complete whole candidate set passes the 80% family-similarity gate")
 
     score, combo = best
     stage = Path(tempfile.mkdtemp(prefix=".selected-stage-", dir=folder_root))
@@ -561,7 +582,7 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             "shared_contract_sha256": coordinator["shared_contract_sha256"],
             "vision_report": str(report_path.resolve()),
             "vision_report_sha256": sha256_file(report_path),
-            "selection": "cross-set-combination",
+            "selection": "whole-set",
             "min_family_similarity_gate": MIN_FAMILY_SIMILARITY,
             "score": {"fidelity_sum": score[0], "min_similarity": score[1], "average_similarity": score[2]},
             "files": files,

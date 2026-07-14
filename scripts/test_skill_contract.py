@@ -154,16 +154,20 @@ class SkillContractTests(unittest.TestCase):
         selector = selector_path.read_text(encoding="utf-8")
         combined = skill + branch + selector
         for required in (
-            "unique normalized `color_identity`",
+            "candidate_attempt_count",
             "color_front",
-            "blocked",
             "candidate-set-N",
             "complete source inventory",
             "80%",
             "selected/",
             "runtime-limit",
-            "no filename inference",
-            "All N generators",
+            "opaque identities",
+            "whole-set",
+            "f1",
+            "b1",
+            "cN",
+            "dN",
+            "sN",
         ):
             self.assertIn(required, combined)
         for executable in (

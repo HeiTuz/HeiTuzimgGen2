@@ -22,7 +22,7 @@ Generate or edit images through the official Codex CLI with an authenticated Cha
 - resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
 - explicit-only Grok image generation through Hermes native `image_generate`, gated on `xai-oauth`, with exact-N queueing that starts at 3 active jobs and never exceeds 5;
 - required post-generation Gemini/Luna image QC before `vision_analyze`, with thumbnail-only review, strict structured output, and provenance-bound reports;
-- optional apparel full-set preparation: one complete candidate set per unique normalized `color_identity` from Vision `color_front` records, followed by cross-set selection at a minimum 80% family-similarity gate.
+- optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by whole-set selection at a minimum 80% family-similarity gate.
 
 Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. The post-generation QC exception may use the preconfigured Google Gemini Developer API key for `gemini-3-flash-preview`; its only fallback is exactly one `gpt-5.6-luna` Codex-subscription review after a Gemini timeout, HTTP 429, or HTTP 5xx. Hard 4xx and malformed responses fail closed. Never fall back outside those explicit contracts. never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use `send_message` with a document/file attachment; printing the path is not delivery evidence.
 
@@ -113,13 +113,9 @@ The one-line report records the selected route, requested primary/fallback model
 
 ### Apparel full-set preparation
 
-Vision role records must provide an explicit `color_identity` for every `color_front`. The count is normalized with Unicode NFKC, collapsed whitespace, and case folding:
+Vision role records may provide explicit `color_identity` values for `color_front` records. Ordinary product folders may instead omit the role map and use the public naming contract: `f1` front, `b1` back, `cN` alternate/color fronts, `dN` details, and `sN` composite-only sources. Colors and candidate attempts are independent: `candidate_attempt_count` defaults to three complete attempts whether the product has one color or many.
 
-- zero unique identities: `blocked`;
-- one unique identity: one task and `candidate-set-1/`;
-- four unique identities: four tasks and `candidate-set-1..4/`.
-
-Do not infer identity from filenames. Back/detail evidence does not add tasks. All N generators receive the complete source inventory and each task generates the full output inventory. The selector admits only hash-verified outputs from a complete task ledger bound to its shared contract, task identity, candidate set, filename, and size; missing or altered outputs block the whole selection. Selection may mix valid candidates across sets only when the entire resulting family clears the 80% gate. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
+Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Selection is whole-set only—cuts from different attempts are never mixed. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
 
 ## Verification
 

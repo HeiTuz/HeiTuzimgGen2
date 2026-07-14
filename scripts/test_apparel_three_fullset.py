@@ -138,8 +138,24 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             fullset.validate_folder_contract(zero)
         one = self.prepare(("navy",))
         four = self.prepare(("navy", "ivory", "red", "black"))
-        self.assertEqual((one["task_count"], one["candidate_sets"]), (1, ["candidate-set-1"]))
-        self.assertEqual((four["task_count"], four["candidate_sets"]), (4, [f"candidate-set-{n}" for n in range(1, 5)]))
+        self.assertEqual((one["task_count"], one["candidate_sets"]), (3, [f"candidate-set-{n}" for n in range(1, 4)]))
+        self.assertEqual((four["task_count"], four["candidate_sets"]), (3, [f"candidate-set-{n}" for n in range(1, 4)]))
+        self.assertEqual(one["candidate_attempt_count"], 3)
+        self.assertEqual(four["color_identities"], ["navy", "ivory", "red", "black"])
+
+    def test_plain_product_folder_auto_maps_roles_and_defaults_to_three_attempts(self):
+        plain = self.contract(("navy",))
+        for old, new in (("front-a.png", "f1.jpg"), ("back-a.png", "b1.jpg"), ("detail-a.png", "d1.jpg")):
+            (self.source / old).rename(self.source / new)
+        plain["sources"] = [path.name for path in sorted(self.source.iterdir())]
+        plain["vision_role_map"] = []
+        plain.pop("normalized_color_identity", None)
+        plain.pop("unique_color_count", None)
+        normalized = fullset.validate_folder_contract(plain)
+        self.assertEqual(normalized["candidate_attempt_count"], 3)
+        self.assertEqual(normalized["task_count"], 3)
+        self.assertEqual(normalized["color_identities"], ["default"])
+        self.assertEqual({row["file"] for row in normalized["vision_role_map"]}, {"f1.jpg", "b1.jpg", "d1.jpg"})
 
     def test_duplicate_colors_and_filename_do_not_change_count(self):
         contract = self.contract(("navy", "ivory"))
@@ -160,9 +176,10 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
     def test_dynamic_tasks_share_complete_inventory_and_disjoint_paths(self):
         coordinator = self.prepare()
         specs = [fullset.read_json(Path(path)) for path in coordinator["task_specs"]]
-        self.assertEqual(len(specs), 4)
-        self.assertEqual([spec["task_id"] for spec in specs], [f"task-{n}" for n in range(1, 5)])
-        self.assertEqual(len({spec["candidate_root"] for spec in specs}), 4)
+        self.assertEqual(len(specs), 3)
+        self.assertEqual([spec["task_id"] for spec in specs], [f"task-{n}" for n in range(1, 4)])
+        self.assertEqual(len({spec["candidate_root"] for spec in specs}), 3)
+        self.assertTrue(all(spec["color_identities"] == ["navy", "ivory", "red", "black"] for spec in specs))
         dry_runs = [browser_task.dry_run(Path(path)) for path in coordinator["task_specs"]]
         inventories = [[row["filename"] for row in result["complete_output_inventory"]] for result in dry_runs]
         self.assertTrue(all(inventory == inventories[0] for inventory in inventories))
@@ -177,10 +194,10 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             clone = dict(base)
             clone["folder_id"] = f"sku-{index}"
             clone["folder_root"] = f"/tmp/sku-{index}"
-            clone["task_specs"] = [f"/tmp/sku-{index}-task-{task}.json" for task in range(1, 5)]
+            clone["task_specs"] = [f"/tmp/sku-{index}-task-{task}.json" for task in range(1, 4)]
             coords.append(clone)
         waves = fullset.build_schedule(coords, 20)
-        self.assertEqual([wave["active_count"] for wave in waves], [20, 5, 4, 1])
+        self.assertEqual([wave["active_count"] for wave in waves], [18, 6])
         oversize = dict(base)
         oversize["task_count"] = 21
         oversize["candidate_sets"] = [f"candidate-set-{n}" for n in range(1, 22)]
@@ -196,9 +213,10 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         coordinator_path = Path(coordinator["folder_root"]) / "coordinator.json"
         result = fullset.select_candidates(coordinator_path, report)
         selected = {row["output_id"]: row["source_candidate_set"] for row in result["files"]}
-        self.assertEqual(selected, preferred)
+        self.assertEqual(set(selected.values()), {"candidate-set-1"})
+        self.assertEqual(result["selection"], "whole-set")
         for row in result["files"]:
-            self.assertEqual(len(row["rejected_alternatives"]), 3)
+            self.assertEqual(len(row["rejected_alternatives"]), 2)
             self.assertIn("source_task", row)
             self.assertIn("source_path", row)
             self.assertIn("source_sha256", row)
@@ -308,8 +326,8 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         path = self.root / "handoff.json"
         path.write_text(json.dumps(handoff), encoding="utf-8")
         coordinator = fullset.prepare_folder(path, self.run_root)
-        self.assertEqual(coordinator["task_count"], 2)
-        self.assertEqual(coordinator["candidate_sets"], ["candidate-set-1", "candidate-set-2"])
+        self.assertEqual(coordinator["task_count"], 3)
+        self.assertEqual(coordinator["candidate_sets"], ["candidate-set-1", "candidate-set-2", "candidate-set-3"])
         self.assertEqual(coordinator["output_inventory"], ["navy.png", "ivory.png"])
 
 

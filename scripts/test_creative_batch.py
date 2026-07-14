@@ -49,7 +49,7 @@ class CreativeBatchTests(unittest.TestCase):
             return {"mode": "dry_run", "jobs": len(rows), "outputs": [row["output_path"] for row in rows]}
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(creative_batch, "compile_manifest", side_effect=write_manifest):
             final = Path(tmp) / "final"
-            result = creative_batch.run_creative_batch("cats", "hongdae editorial", 100, final, batch_runner=dry_runner)
+            result = creative_batch.run_creative_batch("cats", "indie editorial", 100, final, batch_runner=dry_runner)
             self.assertFalse(final.exists())
             self.assertFalse(any(Path(tmp).glob(".final.heituz-work-*")))
         self.assertEqual(len(captured["rows"]), 100)
@@ -67,7 +67,7 @@ class CreativeBatchTests(unittest.TestCase):
             return {"counts": {"succeeded": len(rows)}, "awaiting_qc": [], "awaiting_pilot_qc": False}
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(creative_batch, "compile_manifest", side_effect=write_manifest):
             final = Path(tmp) / "final"
-            result = creative_batch.run_creative_batch("cats", "hongdae editorial", 3, final, execute=True, batch_runner=success_runner)
+            result = creative_batch.run_creative_batch("cats", "indie editorial", 3, final, execute=True, batch_runner=success_runner)
             self.assertEqual(sorted(path.name for path in final.iterdir()), ["001.png", "002.png", "003.png"])
             self.assertTrue(all(path.is_file() for path in final.iterdir()))
             self.assertFalse(any(Path(tmp).glob(".final.heituz-work-*")))

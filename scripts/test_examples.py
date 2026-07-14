@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = {
-    "hongdae_editorial_100.py": 100,
+    "indie_editorial_100.py": 100,
     "fashion_moodboard_80.py": 80,
     "album_cover_directions_40.py": 40,
     "character_silhouettes_64.py": 64,

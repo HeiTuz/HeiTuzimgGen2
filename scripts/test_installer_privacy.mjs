@@ -41,7 +41,7 @@ try {
     "npm package omits the reusable bulk-variation entrypoint");
   for (const example of [
     "examples/preset_runner.py",
-    "examples/hongdae_editorial_100.py",
+    "examples/indie_editorial_100.py",
     "examples/fashion_moodboard_80.py",
     "examples/album_cover_directions_40.py",
     "examples/character_silhouettes_64.py",

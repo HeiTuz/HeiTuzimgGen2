@@ -204,16 +204,23 @@ async function main() {
   fs.writeFileSync(loc.manifest, JSON.stringify({ version: 1, imggen2_target: destination, mpw_target: mpwTarget, imggen2_repo: "github:HeiTuz/HeiTuzImgGen2", mpw_repo: "github:HeiTuz/HeiTuzMPW", vision_qc_requested: visionQc.requested, vision_qc_mode: visionQc.effective, vision_qc_config: visionQcConfig }, null, 2) + "\n", { mode: 0o600 });
   fs.mkdirSync(loc.bin, { recursive: true });
   if (loc.windows) {
-    const launcher = path.join(loc.bin, "heituz.cmd");
-    fs.writeFileSync(launcher, `@echo off\r\nnode "%APPDATA%\\HeiTuz\\heituz.mjs" %*\r\n`);
+    const cmdLauncher = path.join(loc.bin, "heituz.cmd");
+    const psLauncher = path.join(loc.bin, "heituz.ps1");
+    for (const stale of [path.join(loc.bin, "heituz"), path.join(loc.bin, "heituz.mjs")]) {
+      fs.rmSync(stale, { force: true });
+    }
+    fs.writeFileSync(cmdLauncher, `@echo off\r\nnode "%APPDATA%\\HeiTuz\\heituz.mjs" %*\r\n`);
+    fs.writeFileSync(psLauncher, `& node "$env:APPDATA\\HeiTuz\\heituz.mjs" @args\r\nexit $LASTEXITCODE\r\n`);
     if (process.platform === "win32") {
-      const escaped = loc.bin.replace(/'/g, "''");
+      const escapedBin = loc.bin.replace(/'/g, "''");
+      const escapedConfig = loc.config.replace(/'/g, "''");
       const pathScript = [
         "$p = [Environment]::GetEnvironmentVariable('Path', 'User')",
         "$parts = @($p -split ';' | Where-Object { $_ })",
-        `if ($parts -notcontains '${escaped}') { [Environment]::SetEnvironmentVariable('Path', (($parts + '${escaped}') -join ';'), 'User') }`,
+        `$parts = @($parts | Where-Object { -not ($_.TrimEnd('\\') -ieq '${escapedBin}'.TrimEnd('\\')) -and -not ($_.TrimEnd('\\') -ieq '${escapedConfig}'.TrimEnd('\\')) })`,
+        `[Environment]::SetEnvironmentVariable('Path', (('${escapedBin}', $parts) | ForEach-Object { $_ } | Where-Object { $_ }) -join ';', 'User')`,
       ].join("; ");
-      run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", pathScript], { dryRun: false, label: "Windows user PATH update" });
+      run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", pathScript], { dryRun: false, label: "Windows user PATH repair" });
     }
   } else {
     const launcher = path.join(loc.bin, "heituz");

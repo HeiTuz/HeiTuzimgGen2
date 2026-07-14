@@ -88,12 +88,21 @@ try {
   const windowsTarget = path.join(temp, "windows-imggen2");
   const localAppData = path.join(temp, "local-app-data");
   const appData = path.join(temp, "app-data");
+  const windowsBin = path.join(localAppData, "HeiTuz", "bin");
+  fs.mkdirSync(windowsBin, { recursive: true });
+  fs.writeFileSync(path.join(windowsBin, "heituz"), "stale extensionless launcher");
+  fs.writeFileSync(path.join(windowsBin, "heituz.mjs"), "stale mjs launcher");
   invoke(["scripts/install.mjs", "--target", windowsTarget, "--offline", "--register", "--vision-qc", "off"], {
     HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: localAppData, APPDATA: appData,
   });
   const windowsLauncher = path.join(localAppData, "HeiTuz", "bin", "heituz.cmd");
+  const windowsPowerShellLauncher = path.join(localAppData, "HeiTuz", "bin", "heituz.ps1");
   assert.equal(fs.existsSync(windowsLauncher), true);
+  assert.equal(fs.existsSync(windowsPowerShellLauncher), true);
   assert.match(fs.readFileSync(windowsLauncher, "utf8"), /%APPDATA%\\HeiTuz\\heituz\.mjs/);
+  assert.match(fs.readFileSync(windowsPowerShellLauncher, "utf8"), /\$env:APPDATA\\HeiTuz\\heituz\.mjs/);
+  assert.equal(fs.existsSync(path.join(windowsBin, "heituz")), false);
+  assert.equal(fs.existsSync(path.join(windowsBin, "heituz.mjs")), false);
   assert.equal(fs.existsSync(path.join(appData, "HeiTuz", "installation.json")), true);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(windowsTarget, "vision-qc.json"), "utf8")), { version: 1, requested_mode: "off", qc_mode: "off" });
   console.log("unified install/update dry-run: OK");

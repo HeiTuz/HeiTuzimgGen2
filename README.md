@@ -59,9 +59,13 @@ bunx --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
 | 환경 | Codex 기본 경로 | `heituz` 명령 |
 | --- | --- | --- |
 | macOS / Linux | `~/.local/bin/codex` | `~/.local/bin/heituz` |
-| Windows | `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` | `%LOCALAPPDATA%\HeiTuz\bin\heituz.cmd` |
+| Windows | `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` | `%LOCALAPPDATA%\HeiTuz\bin\heituz.cmd` + `heituz.ps1` |
 
-macOS/Linux는 `~/.profile`과 `~/.zprofile`에 `~/.local/bin`을, Windows는 사용자 PATH에 `%LOCALAPPDATA%\HeiTuz\bin`을 중복 없이 추가합니다. 설치 뒤 새 Terminal을 열면 바로 `heituz update`가 됩니다.
+macOS/Linux는 `~/.profile`과 `~/.zprofile`에 `~/.local/bin`을 추가합니다. Windows 설치기는 구형 HeiTuz PATH/확장자 없는 launcher를 제거하고 `%LOCALAPPDATA%\HeiTuz\bin`을 사용자 PATH 맨 앞에 등록합니다. 설치 뒤 새 Terminal을 열면 바로 `heituz update`가 됩니다. Windows에서 파일을 열 앱 선택 창이 뜨는 구형 설치는 아래 명령으로 launcher를 직접 실행한 뒤 설치기를 다시 적용하세요.
+
+```powershell
+& "$env:LOCALAPPDATA\HeiTuz\bin\heituz.cmd" update
+```
 ## Vision-QC 설정
 
 생성 후보는 최종 전달 전에 Vision-QC로 점검할 수 있습니다. 대화형 설치는 사용 가능한 Gemini 키와 Codex를 감지해 추천 경로를 보여주고, 비대화형 설치는 명시 옵션이 없으면 `off`로 닫힙니다. 설정은 설치 폴더의 `vision-qc.json`에 기록되며 자격 증명 값은 저장하지 않습니다.

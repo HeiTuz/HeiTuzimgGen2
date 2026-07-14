@@ -41,8 +41,9 @@ def _inventory(
     input_dir: Path,
     recursive: bool,
     excluded_root: Path | None = None,
-) -> list[tuple[Path, Path]]:
+) -> tuple[list[tuple[Path, Path]], int]:
     items: list[tuple[Path, Path]] = []
+    ignored_unsupported_file_count = 0
     total_bytes = 0
     pending = [input_dir]
     while pending:
@@ -73,7 +74,10 @@ def _inventory(
                 if recursive:
                     pending.append(candidate)
                 continue
-            if not is_file or candidate.suffix.lower() not in SUPPORTED_SUFFIXES:
+            if not is_file:
+                continue
+            if candidate.suffix.lower() not in SUPPORTED_SUFFIXES:
+                ignored_unsupported_file_count += 1
                 continue
             try:
                 size = entry.stat(follow_symlinks=False).st_size
@@ -95,7 +99,10 @@ def _inventory(
                     f"Input image changed to an out-of-scope path during inventory: {candidate}"
                 )
             items.append((relative, final_source))
-    return sorted(items, key=lambda item: item[0].as_posix().casefold())
+    return (
+        sorted(items, key=lambda item: item[0].as_posix().casefold()),
+        ignored_unsupported_file_count,
+    )
 
 
 def _job_ids(inventory: list[tuple[Path, Path]]) -> list[str]:
@@ -173,7 +180,11 @@ def prepare_folder_batch(
         if resolved_output is not None and _contained(input_dir, resolved_output)
         else None
     )
-    inventory = _inventory(input_dir, recursive, excluded_subtree)
+    inventory, ignored_unsupported_file_count = _inventory(
+        input_dir,
+        recursive,
+        excluded_subtree,
+    )
     if not inventory:
         raise FolderPrepareError(f"No supported images found in: {input_dir}")
 
@@ -222,6 +233,7 @@ def prepare_folder_batch(
         "manifest": str(manifest.resolve()),
         "output_root": str(resolved_output.resolve()),
         "source_count": len(records),
+        "ignored_unsupported_file_count": ignored_unsupported_file_count,
         "temporary_outputs": temporary_outputs,
         "temporary_manifest": temporary_outputs,
         "retention_hours": retention_hours() if temporary_outputs else None,

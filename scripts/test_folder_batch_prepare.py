@@ -24,10 +24,10 @@ class FolderBatchPrepareTests(unittest.TestCase):
             nested.mkdir(parents=True)
             front = source / "front.jpg"
             detail = nested / "zipper.PNG"
-            ignored = source / "notes.txt"
+            ignored = source / "Thumbs.db"
             front.write_bytes(b"front")
             detail.write_bytes(b"detail")
-            ignored.write_text("ignore", encoding="utf-8")
+            ignored.write_bytes(b"Windows Explorer thumbnail cache")
             before = {path: path.read_bytes() for path in (front, detail)}
 
             result = folder_batch_prepare.prepare_folder_batch(
@@ -39,6 +39,7 @@ class FolderBatchPrepareTests(unittest.TestCase):
             output_root = Path(result["output_root"])
             records = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(result["source_count"], 2)
+            self.assertEqual(result["ignored_unsupported_file_count"], 1)
             self.assertTrue(result["temporary_outputs"])
             self.assertTrue(result["temporary_manifest"])
             self.assertEqual(output_root.parent, manifest.parent)

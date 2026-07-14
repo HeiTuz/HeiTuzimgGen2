@@ -124,19 +124,31 @@ async function main() {
   if (loc.windows) {
     const launcher = path.join(loc.bin, "heituz.cmd");
     fs.writeFileSync(launcher, `@echo off\r\nnode "%APPDATA%\\HeiTuz\\heituz.mjs" %*\r\n`);
+    if (process.platform === "win32") {
+      const escaped = loc.bin.replace(/'/g, "''");
+      const pathScript = [
+        "$p = [Environment]::GetEnvironmentVariable('Path', 'User')",
+        "$parts = @($p -split ';' | Where-Object { $_ })",
+        `if ($parts -notcontains '${escaped}') { [Environment]::SetEnvironmentVariable('Path', (($parts + '${escaped}') -join ';'), 'User') }`,
+      ].join("; ");
+      run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", pathScript], { dryRun: false, label: "Windows user PATH update" });
+    }
     console.log(`Installed HeiTuzImgGen2 to ${destination}`);
-    console.log(`Run ${launcher} update, or add ${loc.bin} to your user PATH once to use heituz everywhere.`);
+    console.log("Open a new terminal, then run: heituz update");
   } else {
     const launcher = path.join(loc.bin, "heituz");
     fs.writeFileSync(launcher, `#!/bin/sh\nexec node "${path.join(loc.config, "heituz.mjs")}" "$@"\n`, { mode: 0o755 });
     fs.chmodSync(launcher, 0o755);
-    const zprofile = path.join(loc.home, ".zprofile");
     const begin = "# >>> heituz user bin >>>";
     const end = "# <<< heituz user bin <<<";
-    const existing = fs.existsSync(zprofile) ? fs.readFileSync(zprofile, "utf8") : "";
-    if (!existing.includes(begin)) fs.appendFileSync(zprofile, `${existing.endsWith("\n") || !existing ? "" : "\n"}${begin}\nexport PATH="$HOME/.local/bin:$PATH"\n${end}\n`);
+    for (const profile of [path.join(loc.home, ".profile"), path.join(loc.home, ".zprofile")]) {
+      const existing = fs.existsSync(profile) ? fs.readFileSync(profile, "utf8") : "";
+      if (!existing.includes(begin)) {
+        fs.appendFileSync(profile, `${existing.endsWith("\n") || !existing ? "" : "\n"}${begin}\nexport PATH="$HOME/.local/bin:$PATH"\n${end}\n`);
+      }
+    }
     console.log(`Installed HeiTuzImgGen2 to ${destination}`);
-    console.log(`Open a new terminal, then run: heituz update`);
+    console.log("Open a new terminal, then run: heituz update");
   }
 }
 

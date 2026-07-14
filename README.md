@@ -61,7 +61,7 @@ bunx --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
 | macOS / Linux | `~/.local/bin/codex` | `~/.local/bin/heituz` |
 | Windows | `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` | `%LOCALAPPDATA%\HeiTuz\bin\heituz.cmd` |
 
-macOS/Linux는 새 Terminal을 열면 바로 됩니다. Windows는 설치 후 출력되는 경로를 사용자 PATH에 한 번 추가하면 어디서나 `heituz`를 쓸 수 있습니다.
+macOS/Linux는 `~/.profile`과 `~/.zprofile`에 `~/.local/bin`을, Windows는 사용자 PATH에 `%LOCALAPPDATA%\HeiTuz\bin`을 중복 없이 추가합니다. 설치 뒤 새 Terminal을 열면 바로 `heituz update`가 됩니다.
 
 ## 업데이트도 한 줄
 

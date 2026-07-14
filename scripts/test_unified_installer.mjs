@@ -31,6 +31,8 @@ try {
   const launcher = path.join(temp, ".local", "bin", "heituz");
   assert.equal(fs.existsSync(manifest), true);
   assert.equal(fs.existsSync(launcher), true);
+  assert.match(fs.readFileSync(path.join(temp, ".profile"), "utf8"), /heituz user bin/);
+  assert.match(fs.readFileSync(path.join(temp, ".zprofile"), "utf8"), /heituz user bin/);
   const updater = invoke(["update", "--dry-run"], { HEITUZ_TEST_PLATFORM: "linux" }, launcher);
   assert.match(updater, /HeiTuzImgGen2 update/);
   assert.match(updater, /HeiTuzMPW update/);

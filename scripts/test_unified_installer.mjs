@@ -16,7 +16,7 @@ function invoke(args, env = {}, command = process.execPath) {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: "utf8",
-    env: { ...process.env, HOME: temp, XDG_CONFIG_HOME: path.join(temp, "config"), ...env },
+    env: { ...process.env, HOME: temp, USERPROFILE: temp, XDG_CONFIG_HOME: path.join(temp, "config"), ...env },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;

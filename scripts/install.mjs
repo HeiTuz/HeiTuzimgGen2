@@ -29,6 +29,8 @@ Options:
   --vision-qc <mode>     Configure QC: auto, gemini-luna, gemini, luna, or off
   --dry-run              Print the platform plan without writing or downloading
   --offline              Local-copy mode for tests; implies --skip-codex and --skip-mpw
+  --register             Also register the global heituz launcher/manifest (default for non-offline installs)
+  --no-register          Copy files only; leave the global launcher, manifest, and shell profiles untouched
   -h, --help             Show this help
 
 After install: heituz update [--dry-run] [--codex]
@@ -37,7 +39,7 @@ After install: heituz update [--dry-run] [--codex]
 }
 
 function parse(argv) {
-  const options = { target: null, mpwTarget: null, force: false, skipCodex: false, skipMpw: false, dryRun: false, offline: false, visionQc: null, visionQcExplicit: false };
+  const options = { target: null, mpwTarget: null, force: false, skipCodex: false, skipMpw: false, dryRun: false, offline: false, register: null, visionQc: null, visionQcExplicit: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") usage(0);
@@ -46,6 +48,8 @@ function parse(argv) {
     if (arg === "--skip-mpw") { options.skipMpw = true; continue; }
     if (arg === "--dry-run") { options.dryRun = true; continue; }
     if (arg === "--offline") { options.offline = true; continue; }
+    if (arg === "--register") { options.register = true; continue; }
+    if (arg === "--no-register") { options.register = false; continue; }
     if (arg === "--target" || arg === "--mpw-target" || arg === "--vision-qc") {
       const value = argv[++i];
       if (!value) usage(2);
@@ -109,7 +113,14 @@ function ensurePillow(loc, options) {
   const python = loc.windows ? "python" : "python3";
   const probe = spawnSync(python, ["-c", "from PIL import Image"], { stdio: "ignore" });
   if (!probe.error && probe.status === 0) return;
-  run(python, ["-m", "pip", "install", "--user", "Pillow>=10,<13"], { dryRun: false, label: "Pillow install" });
+  const install = spawnSync(python, ["-m", "pip", "install", "--user", "Pillow>=10,<13"], { stdio: "inherit" });
+  if (install.error || install.status !== 0) {
+    console.warn(
+      "Pillow could not be installed automatically (for example on a PEP 668 externally-managed Python). " +
+      "Vision-QC thumbnails require Pillow; install it later via a virtual environment, pipx, or your package manager. " +
+      "Continuing the installation without it; QC stays fail-closed until Pillow is available.",
+    );
+  }
 }
 function hasGeminiKey() {
   return Boolean(process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim());
@@ -161,7 +172,7 @@ async function main() {
   const visionQc = await selectVisionQc(options, helper, loc);
 
   if (options.dryRun) {
-    console.log(JSON.stringify({ imggen2_target: destination, mpw_target: mpwTarget, codex: helper.codexInstallCommand(loc.windows), platform: loc.windows ? "windows" : "posix", vision_qc: { requested_mode: visionQc.requested, mode: visionQc.effective, config: path.join(destination, "vision-qc.json") } }, null, 2));
+    console.log(JSON.stringify({ imggen2_target: destination, mpw_target: mpwTarget, codex: helper.codexInstallCommand(loc.windows), platform: loc.windows ? "windows" : "posix", register: options.register ?? !options.offline, vision_qc: { requested_mode: visionQc.requested, mode: visionQc.effective, config: path.join(destination, "vision-qc.json") } }, null, 2));
     return;
   }
   if (fs.existsSync(destination)) {
@@ -177,12 +188,19 @@ async function main() {
     run(plan.command, plan.args, { dryRun: false, label: "official Codex CLI install" });
   }
   if (!options.skipMpw) {
-    run(loc.windows ? "npx.cmd" : "npx", ["--yes", "github:HeiTuz/HeiTuzMPW", "--", "--dest", mpwTarget, "--force", "--quiet"], { dryRun: false, label: "HeiTuzMPW install" });
+    const invocation = helper.npxInvocation(loc.windows, ["--yes", "github:HeiTuz/HeiTuzMPW", "--", "--dest", mpwTarget, "--force", "--quiet"]);
+    run(invocation.command, invocation.args, { dryRun: false, label: "HeiTuzMPW install" });
   }
 
+  const visionQcConfig = configureVisionQc(destination, visionQc);
+  const register = options.register ?? !options.offline;
+  if (!register) {
+    console.log(`Installed HeiTuzImgGen2 to ${destination}`);
+    console.log("Global launcher and manifest were not registered (offline/test install); rerun with --register to make this the active installation.");
+    return;
+  }
   fs.mkdirSync(loc.config, { recursive: true });
   fs.copyFileSync(path.join(destination, "scripts", "heituz.mjs"), path.join(loc.config, "heituz.mjs"));
-  const visionQcConfig = configureVisionQc(destination, visionQc);
   fs.writeFileSync(loc.manifest, JSON.stringify({ version: 1, imggen2_target: destination, mpw_target: mpwTarget, imggen2_repo: "github:HeiTuz/HeiTuzImgGen2", mpw_repo: "github:HeiTuz/HeiTuzMPW", vision_qc_requested: visionQc.requested, vision_qc_mode: visionQc.effective, vision_qc_config: visionQcConfig }, null, 2) + "\n", { mode: 0o600 });
   fs.mkdirSync(loc.bin, { recursive: true });
   if (loc.windows) {
@@ -197,8 +215,6 @@ async function main() {
       ].join("; ");
       run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", pathScript], { dryRun: false, label: "Windows user PATH update" });
     }
-    console.log(`Installed HeiTuzImgGen2 to ${destination}`);
-    console.log("Open a new terminal, then run: heituz update");
   } else {
     const launcher = path.join(loc.bin, "heituz");
     fs.writeFileSync(launcher, `#!/bin/sh\nexec node "${path.join(loc.config, "heituz.mjs")}" "$@"\n`, { mode: 0o755 });
@@ -211,9 +227,9 @@ async function main() {
         fs.appendFileSync(profile, `${existing.endsWith("\n") || !existing ? "" : "\n"}${begin}\nexport PATH="$HOME/.local/bin:$PATH"\n${end}\n`);
       }
     }
-    console.log(`Installed HeiTuzImgGen2 to ${destination}`);
-    console.log("Open a new terminal, then run: heituz update");
   }
+  console.log(`Installed HeiTuzImgGen2 to ${destination}`);
+  console.log("Open a new terminal, then run: heituz update");
 }
 
 main().catch((error) => { console.error(`HeiTuzImgGen2 installer: ${error.message}`); process.exitCode = 1; });

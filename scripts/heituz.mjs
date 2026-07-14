@@ -22,8 +22,13 @@ export function locations() {
   return { home, windows, config, bin, manifest: path.join(config, "installation.json") };
 }
 
-function npxCommand(windows) {
-  return windows ? "npx.cmd" : "npx";
+export function npxInvocation(windows, args) {
+  // Windows cannot spawn npx.cmd directly without a shell (Node rejects .cmd
+  // spawns with EINVAL since the April 2024 security release); route through
+  // cmd.exe /c with an argument vector instead of shell string interpolation.
+  return windows
+    ? { command: "cmd.exe", args: ["/d", "/s", "/c", "npx", ...args] }
+    : { command: "npx", args };
 }
 
 export function codexExists(windows) {
@@ -91,9 +96,10 @@ export function update(manifest, { dryRun, forceCodex, interactive = Boolean(pro
     const plan = codexInstallCommand(windows);
     run(plan.command, plan.args, { dryRun, label: "official Codex CLI install/update" });
   }
-  const npx = npxCommand(windows);
-  run(npx, imggenUpdateArgs(manifest, { interactive }), { dryRun, label: "HeiTuzImgGen2 update" });
-  run(npx, ["--yes", MPW_REPO, "--", "--dest", manifest.mpw_target, "--force", "--quiet"], { dryRun, label: "HeiTuzMPW update" });
+  const imggen = npxInvocation(windows, imggenUpdateArgs(manifest, { interactive }));
+  run(imggen.command, imggen.args, { dryRun, label: "HeiTuzImgGen2 update" });
+  const mpw = npxInvocation(windows, ["--yes", MPW_REPO, "--", "--dest", manifest.mpw_target, "--force", "--quiet"]);
+  run(mpw.command, mpw.args, { dryRun, label: "HeiTuzMPW update" });
 }
 
 function main(argv) {

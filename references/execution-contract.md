@@ -53,4 +53,4 @@ For text recovery, tighten role, position, and copy precision first; use a large
 
 The helper refuses collisions and missing output directories. It accepts zero to four existing reference files and does not mutate them.
 
-For Telegram delivery, use a supported messaging tool with the generated image as a document/file attachment and retain its filename. A successful API response is delivery evidence; printing the path is not.
+For delivery, use a supported file attachment and retain the generated filename. A successful delivery response is evidence; printing the path is not.

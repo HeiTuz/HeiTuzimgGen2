@@ -23,7 +23,7 @@ from codex_cli_resolver import CodexResolutionError, ResolvedCodex, resolve_code
 GENERATED_IMAGES_DIR = Path.home() / ".codex" / "generated_images"
 DOWNLOADS_DIR = Path.home() / "Downloads"
 REASONING_EFFORT = "medium"
-APPROVAL_ENV = "HERMES_IMAGE_LIVE_APPROVED"
+
 CLI_TIMEOUT_SECONDS = 900
 _SESSION_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
@@ -528,9 +528,7 @@ def run(
     summary = request_summary(command, output, refs, _resolved_provenance(resolved))
     if not execute:
         return summary
-    # The caller's explicit image-generation request authorizes this bounded
-    # invocation. APPROVAL_ENV remains accepted for backwards-compatible
-    # wrappers, but is no longer a mandatory user-facing ceremony.
+    # The caller's explicit image-generation request authorizes this bounded invocation.
     before = generated_pngs()
     try:
         completed = subprocess.run(

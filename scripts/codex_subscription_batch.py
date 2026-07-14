@@ -28,7 +28,7 @@ from typing import Callable, Mapping, Sequence
 
 import codex_subscription_transport as transport
 
-BATCH_APPROVAL_ENV = "HERMES_IMAGE_BATCH_APPROVAL_SHA256"
+
 LEDGER_NAME = ".heituzimggen2-batch.json"
 LOCK_NAME = ".heituzimggen2-batch.lock"
 SUMMARY_JSON_NAME = "batch-summary.json"
@@ -620,7 +620,7 @@ def run_batch(
             "mode": "dry_run", "live": False, "manifest_sha256": manifest_hash,
             "approval_sha256": approval_hash,
             "codex_provenance": dict(codex_provenance),
-            "approval_env": BATCH_APPROVAL_ENV, "jobs": len(jobs), "pilot_id": jobs[0].id,
+            "jobs": len(jobs), "pilot_id": jobs[0].id,
             "worker_target": planned_target,
             "worker_start": min(start, planned_target),
             "ramp_every": ramp_every,
@@ -656,8 +656,6 @@ def run_batch(
                 "Batch has unresolved failures; create a retry manifest and run it with a separate ledger before continuing."
             )
         ledger_lock = threading.Lock()
-        old_single = os.environ.get(transport.APPROVAL_ENV)
-        os.environ[transport.APPROVAL_ENV] = "1"
         try:
             if pilot_state["status"] == "pending":
                 _, pilot_status = _run_one(
@@ -719,10 +717,7 @@ def run_batch(
                 for future in as_completed(futures):
                     future.result()
         finally:
-            if old_single is None:
-                os.environ.pop(transport.APPROVAL_ENV, None)
-            else:
-                os.environ[transport.APPROVAL_ENV] = old_single
+            pass
         return write_summaries(output_root, ledger, ledger_path)
 
 

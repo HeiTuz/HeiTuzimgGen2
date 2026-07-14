@@ -53,13 +53,7 @@ class FakeRunner:
 
 
 def raw_approved_batch(manifest, out, runner, **kwargs):
-    _, digest = batch.load_manifest(manifest, out)
-    approval = batch.approval_digest(
-        digest, kwargs.get("workers", "auto"), kwargs.get("start", 1), kwargs.get("hard_cap", 8),
-        kwargs.get("ramp_every", 3), kwargs.get("ram_per_worker_gb", 0.5),
-    )
-    with patch.dict(os.environ, {batch.BATCH_APPROVAL_ENV: approval}, clear=False):
-        return batch.run_batch(manifest, out, execute=True, runner=runner, **kwargs)
+    return batch.run_batch(manifest, out, execute=True, runner=runner, **kwargs)
 
 
 def complete_approved_batch(manifest, out, runner, **kwargs):
@@ -249,8 +243,7 @@ class BatchExecutionTests(unittest.TestCase):
     def test_live_uses_manifest_provenance_without_env_ceremony(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); manifest, _ = self.make_manifest(root, 1)
-            with patch.dict(os.environ, {batch.BATCH_APPROVAL_ENV: "wrong"}, clear=False):
-                result = batch.run_batch(manifest, root / "out", execute=True, runner=FakeRunner())
+            result = batch.run_batch(manifest, root / "out", execute=True, runner=FakeRunner())
             self.assertTrue(result["awaiting_pilot_qc"])
             ledger = batch.load_ledger(root / "out" / batch.LEDGER_NAME)
             self.assertIn("approval_sha256", ledger["config"])
@@ -384,10 +377,8 @@ class BatchExecutionTests(unittest.TestCase):
             self.approved_run(manifest, out, FakeRunner())
             records[0]["prompt"] = "changed"; write_jsonl(manifest, records)
             _, changed_hash = batch.load_manifest(manifest, out)
-            changed_approval = batch.approval_digest(changed_hash, "auto", 1, 8, 3, 0.5)
-            with patch.dict(os.environ, {batch.BATCH_APPROVAL_ENV: changed_approval}, clear=False):
-                with self.assertRaisesRegex(batch.BatchError, "Manifest drift"):
-                    batch.run_batch(manifest, out, execute=True, runner=FakeRunner())
+            with self.assertRaisesRegex(batch.BatchError, "Manifest drift"):
+                batch.run_batch(manifest, out, execute=True, runner=FakeRunner())
 
     def test_output_root_lock_rejects_concurrent_owner(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -70,7 +70,7 @@ class SkillContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(transport, "resolve_codex_command", return_value=self._resolved_codex()), \
                 patch.object(transport.subprocess, "run", return_value=completed), \
-                patch.dict(transport.os.environ, {transport.APPROVAL_ENV: "1"}, clear=True):
+                patch.dict(transport.os.environ, {}, clear=True):
             with self.assertRaisesRegex(transport.TransportError, "did not produce"):
                 transport.run("generate", Path(tmp) / "missing.png", [], execute=True)
 
@@ -146,12 +146,9 @@ class SkillContractTests(unittest.TestCase):
     def test_apparel_dynamic_fullset_branch_preserves_role_boundaries(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         branch_path = SKILL_ROOT / "references" / "cases" / "apparel-ghost-cut-folder-batch.md"
-        selector_path = SKILL_ROOT / "references" / "browser-gpt-three-fullset-selector.md"
         self.assertTrue(branch_path.is_file())
-        self.assertTrue(selector_path.is_file())
         branch = branch_path.read_text(encoding="utf-8")
-        selector = selector_path.read_text(encoding="utf-8")
-        combined = skill + branch + selector
+        combined = skill + branch
         for required in (
             "candidate_attempt_count",
             "color_front",
@@ -171,7 +168,6 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(required, combined)
         for executable in (
             SKILL_ROOT / "scripts" / "apparel_three_fullset.py",
-            SKILL_ROOT / "scripts" / "browser_gpt_apparel_task.py",
             SKILL_ROOT / "references" / "apparel-three-fullset-folder.schema.json",
             SKILL_ROOT / "references" / "apparel-handoff.schema.json",
             SKILL_ROOT / "references" / "fixtures" / "apparel-handoff.valid.json",

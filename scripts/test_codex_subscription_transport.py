@@ -154,7 +154,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             patch.object(transport, "resolve_codex_command", return_value=self._resolved()),
             patch.object(transport.subprocess, "run", side_effect=fake_run),
             patch.object(transport, "GENERATED_IMAGES_DIR", generated_root),
-            patch.dict(os.environ, {transport.APPROVAL_ENV: "1"}, clear=True),
+            patch.dict(os.environ, {}, clear=True),
         ):
             return transport.run("draw", Path(tmp) / "out.png", [], execute=True)
 
@@ -232,7 +232,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             transport, "resolve_codex_command", return_value=self._resolved()
         ), patch.object(
             transport.subprocess, "run", return_value=completed
-        ), patch.dict(os.environ, {transport.APPROVAL_ENV: "1"}, clear=True):
+        ), patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(
                 transport.TransportError, "category=model_unavailable"
             ) as caught:
@@ -420,7 +420,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
                     "run",
                     side_effect=transport.subprocess.TimeoutExpired(cmd="codex", timeout=1),
                 ), \
-                patch.dict(os.environ, {transport.APPROVAL_ENV: "1"}, clear=True):
+                patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(transport.TransportError, "timed out"):
                 transport.run("draw", Path(tmp) / "out.png", [], execute=True)
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan and select three independent browser-GPT apparel candidate sets.
+"""Plan and select independent apparel product-photo candidate sets.
 
 This module is network-free.  It prepares immutable per-task contracts, builds a
 generic delegation schedule bounded by the live runtime limit, and materializes a
@@ -234,7 +234,7 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
         "heituzmpw_folder_master": folder_master,
         "qc_contract": qc_contract,
         "outputs": outputs,
-        "transport": "external-browser-cdp",
+        "transport": "standard-imggen2-backend",
         "selection_policy": {
             "min_family_similarity": MIN_FAMILY_SIMILARITY,
             "priority": [
@@ -291,8 +291,8 @@ def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
             "shared_contract_path": str(package_path),
             "shared_contract_sha256": shared_sha,
             "source_contract_sha256": sha256_file(contract_path),
-            "browser_surface": "browser adapter direct CDP/Playwright session",
-            "forbid": ["overwrite", "cross_session_png_recovery", "generated_result_chaining", "silent_provider_fallback"],
+            "execution_surface": "standard ImgGen2 generation backend",
+            "forbid": ["overwrite", "cross_attempt_recovery", "generated_result_chaining", "silent_provider_fallback"],
         }
         spec_path = folder_root / f"{spec['task_id']}.json"
         if spec_path.exists() and read_json(spec_path) != spec:
@@ -321,6 +321,60 @@ def prepare_folder(contract_path: Path, run_root: Path) -> dict[str, Any]:
     else:
         atomic_json(coordinator_path, summary)
     return summary
+
+
+def inspect_candidate_task(spec_path: Path) -> dict[str, Any]:
+    """Validate one prepared candidate attempt without binding it to an execution backend."""
+    spec = read_json(spec_path)
+    shared_path = Path(spec.get("shared_contract_path", "")).resolve()
+    shared = read_json(shared_path)
+    if sha256_bytes(_canonical(shared)) != spec.get("shared_contract_sha256"):
+        raise ContractError("shared product specification hash mismatch")
+    stored_shared = shared
+    if stored_shared.get("sources") and isinstance(stored_shared["sources"][0], dict):
+        shared = validate_folder_contract({
+            **stored_shared,
+            "sources": [source["name"] for source in stored_shared["sources"]],
+        })
+    else:
+        shared = validate_folder_contract(stored_shared)
+    if _canonical(shared) != _canonical(stored_shared):
+        raise ContractError("immutable source inventory changed after preparation")
+    attempts = candidate_sets_for_shared_contract(shared)
+    attempt = spec.get("candidate_set")
+    if attempt not in attempts:
+        raise ContractError("invalid candidate attempt")
+    if spec.get("candidate_sets") != list(attempts) or spec.get("task_count") != len(attempts):
+        raise ContractError("task specification does not match candidate-attempt contract")
+    expected_task_id = f"task-{attempts.index(attempt) + 1}"
+    if spec.get("task_id") != expected_task_id:
+        raise ContractError("task id does not match candidate-attempt contract")
+    attempt_root = Path(spec["candidate_root"]).resolve()
+    if attempt_root != shared_path.parent / attempt:
+        raise ContractError("candidate root does not match disjoint attempt ownership")
+    source_paths = [Path(source["path"]).resolve() for source in shared["sources"]]
+    if any(not path.is_file() for path in source_paths):
+        raise ContractError("complete source inventory is unavailable")
+    attempt_root.mkdir(parents=True, exist_ok=True)
+    return {
+        "task_id": spec["task_id"],
+        "candidate_set": attempt,
+        "execution_surface": "standard ImgGen2 generation backend",
+        "shared_contract_sha256": spec["shared_contract_sha256"],
+        "source_count": len(source_paths),
+        "source_inventory": [source["name"] for source in shared["sources"]],
+        "complete_output_inventory": [
+            {"id": output["id"], "filename": output["filename"], "path": str(attempt_root / output["filename"])}
+            for output in shared["outputs"]
+        ],
+        "invariants": {
+            "complete_source_inventory": True,
+            "generated_result_chaining": False,
+            "cross_attempt_recovery": False,
+            "overwrite": False,
+            "provider_fallback": False,
+        },
+    }
 
 
 def _schedule_coordinator(coordinator: dict[str, Any]) -> tuple[int, list[str]]:

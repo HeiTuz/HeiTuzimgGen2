@@ -23,7 +23,7 @@ function invoke(args, env = {}, command = process.execPath) {
 }
 
 try {
-  const updateManifest = { imggen2_target: "/tmp/imggen", vision_qc_requested: "gemini-luna" };
+  const updateManifest = { imggen2_target: "/tmp/imggen", vision_qc_requested: "auto" };
   const interactiveUpdate = imggenUpdateArgs(updateManifest, { interactive: true });
   assert.deepEqual(interactiveUpdate.slice(-2), ["--vision-qc", "auto"]);
   const automatedUpdate = imggenUpdateArgs(updateManifest, { interactive: false });

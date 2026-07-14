@@ -21,7 +21,6 @@ def load(name, path):
 
 
 fullset = load("apparel_three_fullset_test", SCRIPT_DIR / "apparel_three_fullset.py")
-browser_task = load("browser_gpt_apparel_task_test", SCRIPT_DIR / "browser_gpt_apparel_task.py")
 mpw_compiler = load("mpw_apparel_handoff_test", MPW_ROOT / "scripts" / "compile_apparel_handoff.py") if MPW_ROOT else None
 
 
@@ -180,12 +179,12 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         self.assertEqual([spec["task_id"] for spec in specs], [f"task-{n}" for n in range(1, 4)])
         self.assertEqual(len({spec["candidate_root"] for spec in specs}), 3)
         self.assertTrue(all(spec["color_identities"] == ["navy", "ivory", "red", "black"] for spec in specs))
-        dry_runs = [browser_task.dry_run(Path(path)) for path in coordinator["task_specs"]]
+        dry_runs = [fullset.inspect_candidate_task(Path(path)) for path in coordinator["task_specs"]]
         inventories = [[row["filename"] for row in result["complete_output_inventory"]] for result in dry_runs]
         self.assertTrue(all(inventory == inventories[0] for inventory in inventories))
         self.assertEqual(inventories[0], [output["filename"] for output in self.outputs])
         self.assertTrue(all(result["source_count"] == len(self.contract()["sources"]) for result in dry_runs))
-        self.assertTrue(all(result["invariants"]["all_sources_uploaded_together"] for result in dry_runs))
+        self.assertTrue(all(result["invariants"]["complete_source_inventory"] for result in dry_runs))
 
     def test_runtime_20_packs_five_four_task_folders_and_blocks_oversize(self):
         base = self.prepare()
@@ -252,8 +251,8 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         coordinator = self.prepare(("navy",))
         spec_path = Path(coordinator["task_specs"][0])
         (self.source / "front-a.png").write_bytes(b"changed after prepare")
-        with self.assertRaisesRegex(browser_task.BrowserTaskError, "immutable shared source inventory changed"):
-            browser_task.dry_run(spec_path)
+        with self.assertRaisesRegex(fullset.ContractError, "immutable source inventory changed"):
+            fullset.inspect_candidate_task(spec_path)
 
         fresh_contract = self.contract(("ivory",))
         fresh_contract["folder_id"] = "sku-fresh"
@@ -265,8 +264,8 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         spec["candidate_root"] = str(self.root / "outside" / spec["candidate_set"])
         external_spec_path = self.root / "external-task.json"
         external_spec_path.write_text(json.dumps(spec), encoding="utf-8")
-        with self.assertRaisesRegex(browser_task.BrowserTaskError, "disjoint set ownership"):
-            browser_task.dry_run(external_spec_path)
+        with self.assertRaisesRegex(fullset.ContractError, "disjoint attempt ownership"):
+            fullset.inspect_candidate_task(external_spec_path)
 
     def test_source_overlap_and_candidate_ledger_provenance_fail_closed(self):
         overlap = self.contract(("navy",))

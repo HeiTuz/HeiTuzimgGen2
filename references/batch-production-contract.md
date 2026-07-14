@@ -125,5 +125,5 @@ For ordinary batches, one authoritative runner already performs bounded parallel
 - no overwrite, symlink source, traversal, or global artifact pool;
 - nonzero Codex exit rejects every artifact from that invocation;
 - raw subprocess output is never written to the ledger or summary;
-- no live generation, Vision, or Telegram call during tests;
+- no live generation, Vision, or external delivery call during tests;
 - no text-overlay repair; failed text cuts are regenerated.

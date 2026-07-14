@@ -31,7 +31,8 @@ try {
   assert.equal(fs.existsSync(path.join(destination, "contracts", "v1", "image-production-handoff.schema.json")), true);
   assert.equal(hasExcludedPath(destination), false, "installer copied excluded local state");
 
-  const packed = JSON.parse(run("npm", ["pack", "--dry-run", "--json"]));
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const packed = JSON.parse(run(npmCommand, ["pack", "--dry-run", "--json"]));
   const names = packed[0].files.map((file) => file.path);
   assert.equal(names.includes("contracts/v1/image-production-handoff.schema.json"), true,
     "npm package omits the public handoff schema");

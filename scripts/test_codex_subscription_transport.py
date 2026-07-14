@@ -64,6 +64,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             candidate = self._executable(Path(tmp) / "tools" / "codex.exe")
             resolved = resolver.resolve_codex_command(
                 platform="win32",
+                environ={},
                 which=lambda name: str(candidate) if name == "codex.exe" else None,
                 runner=self._version_runner(),
             )
@@ -74,6 +75,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             candidate = self._executable(Path(tmp) / "tools" / "codex.cmd")
             resolved = resolver.resolve_codex_command(
                 platform="win32",
+                environ={},
                 which=lambda name: str(candidate) if name == "codex.cmd" else None,
                 runner=self._version_runner(),
             )
@@ -523,13 +525,15 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             },
             rendered_text_exists=True,
         )
+        output = Path(tempfile.gettempdir()) / "promo.png"
         plan = transport.plan_qc_regeneration(
-            Path("/tmp/promo.png"), passed_axes, failing, promotional=True
+            output, passed_axes, failing, promotional=True
         )
         self.assertEqual(plan["deltas"], {})
-        self.assertEqual(plan["regenerate_outputs"], ["/tmp/promo.png"])
+        self.assertEqual(plan["regenerate_outputs"], [str(output)])
 
     def test_promotional_regeneration_requires_promo_qc(self):
+        output = Path(tempfile.gettempdir()) / "promo.png"
         passed_axes = transport.evaluate_qc(
             {
                 "goal_fit": 5,
@@ -541,7 +545,7 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "require a promo QC report"):
             transport.plan_qc_regeneration(
-                Path("/tmp/promo.png"), passed_axes, promotional=True
+                output, passed_axes, promotional=True
             )
 
 

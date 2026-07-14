@@ -103,6 +103,14 @@ function run(command, commandArgs, { dryRun, label }) {
   const result = spawnSync(command, commandArgs, { stdio: "inherit" });
   if (result.error || result.status !== 0) throw new Error(`${label} failed${result.error ? `: ${result.error.message}` : ` (exit ${result.status})`}`);
 }
+
+function ensurePillow(loc, options) {
+  if (options.offline || options.dryRun) return;
+  const python = loc.windows ? "python" : "python3";
+  const probe = spawnSync(python, ["-c", "from PIL import Image"], { stdio: "ignore" });
+  if (!probe.error && probe.status === 0) return;
+  run(python, ["-m", "pip", "install", "--user", "Pillow>=10,<13"], { dryRun: false, label: "Pillow install" });
+}
 function hasGeminiKey() {
   return Boolean(process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim());
 }
@@ -147,6 +155,7 @@ async function main() {
   const helper = await import(pathToFileURL(path.join(source, "scripts", "heituz.mjs")).href);
   delete process.env.HEITUZ_INSTALLER_IMPORT;
   const loc = helper.locations();
+  ensurePillow(loc, options);
   const destination = path.resolve(options.target || path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"));
   const mpwTarget = path.resolve(options.mpwTarget || path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"));
   const visionQc = await selectVisionQc(options, helper, loc);

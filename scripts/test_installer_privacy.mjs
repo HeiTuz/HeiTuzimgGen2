@@ -39,6 +39,18 @@ try {
     "npm package omits the public handoff schema");
   assert.equal(names.includes("examples/batch_100_variations.py"), true,
     "npm package omits the reusable bulk-variation entrypoint");
+  for (const example of [
+    "examples/preset_runner.py",
+    "examples/hongdae_editorial_100.py",
+    "examples/fashion_moodboard_80.py",
+    "examples/album_cover_directions_40.py",
+    "examples/character_silhouettes_64.py",
+    "examples/package_concepts_50.py",
+    "examples/interior_directions_48.py",
+    "examples/single_mpw_enhanced.py",
+  ]) {
+    assert.equal(names.includes(example), true, `npm package omits ${example}`);
+  }
   assert.equal(names.some((name) => /(^|\/)(?:\.git|\.gjc|\.omx|docs-internal|node_modules|__pycache__)(?:\/|$)|\.pyc$|\.bak/u.test(name)), false,
     "npm package includes excluded local state");
   console.log("installer/package privacy allowlist: OK");

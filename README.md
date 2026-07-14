@@ -105,6 +105,20 @@ python3 examples/batch_100_variations.py \
 
 성공 후 출력 폴더에는 PNG만 남습니다. manifest·ledger·summary·임시 요청은 숨김 workspace에서 제거되며, 실패나 중단 때만 재개를 위해 workspace를 보존합니다. 단순 텍스트 한 장도 MPW가 설치돼 있으면 자동 보강되고 `--mpw off`로 끌 수 있습니다.
 
+### 포함된 예제
+
+| 파일 | 기본 사례 | 수량 |
+| --- | --- | ---: |
+| `examples/hongdae_editorial_100.py` | 홍대 서브컬처·독립잡지 레퍼런스 | 100 |
+| `examples/fashion_moodboard_80.py` | 패션 컬렉션 무드보드 | 80 |
+| `examples/album_cover_directions_40.py` | 가상 앨범커버 방향 탐색 | 40 |
+| `examples/character_silhouettes_64.py` | 캐릭터 실루엣 탐색 | 64 |
+| `examples/package_concepts_50.py` | 텍스트 없는 패키지 콘셉트 | 50 |
+| `examples/interior_directions_48.py` | 소형 문화공간·인테리어 방향 | 48 |
+| `examples/single_mpw_enhanced.py` | 단일 텍스트 요청 MPW 보강 | 1 |
+
+각 예제는 인자 없이 실행하면 자기 기본값으로 dry-run합니다. `--prompt`, `--style`, `--count`, `--output-root`로 필요한 축만 덮어쓰고, 실제 생성할 때만 `--execute`를 붙입니다. 실행 로직은 `preset_runner.py`와 본체에만 있어 사례 파일을 복사해도 유지보수 코드가 늘어나지 않습니다.
+
 Windows batch ledger가 OneDrive·SMB·백신의 짧은 파일 잠금과 충돌해 `WinError 5` 또는 `WinError 32`를 내면 atomic replace를 제한적으로 재시도합니다. 출력 경로의 symlink뿐 아니라 junction/reparse point도 거부합니다. `npm test`와 install smoke는 Windows/macOS/Linux CI에서 각각 실행됩니다.
 
 ## 업데이트도 한 줄

@@ -11,6 +11,17 @@ EXAMPLES = {
     "character_silhouettes_64.py": 64,
     "package_concepts_50.py": 50,
     "interior_directions_48.py": 48,
+    "product_hero_shots_24.py": 24,
+    "marketplace_thumbnails_32.py": 32,
+    "detail_closeups_20.py": 20,
+    "color_variant_lineup_18.py": 18,
+    "lifestyle_product_scenes_24.py": 24,
+    "seasonal_campaign_banners_16.py": 16,
+    "bundle_set_compositions_16.py": 16,
+    "beauty_cosmetics_shots_24.py": 24,
+    "food_beverage_shots_24.py": 24,
+    "home_living_scenes_24.py": 24,
+    "apparel_catalog_looks_28.py": 28,
 }
 
 

@@ -115,9 +115,41 @@ python3 examples/batch_100_variations.py \
 | `examples/character_silhouettes_64.py` | 캐릭터 실루엣 탐색 | 64 |
 | `examples/package_concepts_50.py` | 텍스트 없는 패키지 콘셉트 | 50 |
 | `examples/interior_directions_48.py` | 소형 문화공간·인테리어 방향 | 48 |
+| `examples/product_hero_shots_24.py` | 상세페이지 첫 컷용 클린 제품 히어로 | 24 |
+| `examples/marketplace_thumbnails_32.py` | 오픈마켓 그리드용 썸네일 방향 | 32 |
+| `examples/detail_closeups_20.py` | 소재·봉제·마감 디테일 클로즈업 | 20 |
+| `examples/color_variant_lineup_18.py` | 옵션 선택용 컬러 변형 라인업 | 18 |
+| `examples/lifestyle_product_scenes_24.py` | 사용 맥락 라이프스타일 연출 컷 | 24 |
+| `examples/seasonal_campaign_banners_16.py` | 카피 여백 확보 시즌 캠페인 배너 | 16 |
+| `examples/bundle_set_compositions_16.py` | 번들·기프트 세트 구성 컷 | 16 |
+| `examples/beauty_cosmetics_shots_24.py` | 뷰티·코스메틱 텍스처 연출 | 24 |
+| `examples/food_beverage_shots_24.py` | 식음료 판매용 식욕 자극 컷 | 24 |
+| `examples/home_living_scenes_24.py` | 홈·리빙 침실/공간 스테이징 | 24 |
+| `examples/apparel_catalog_looks_28.py` | 의류 카탈로그·룩북 룩 탐색 | 28 |
 | `examples/single_mpw_enhanced.py` | 단일 텍스트 요청 MPW 보강 | 1 |
 
 각 예제는 인자 없이 실행하면 자기 기본값으로 dry-run합니다. `--prompt`, `--style`, `--count`, `--output-root`로 필요한 축만 덮어쓰고, 실제 생성할 때만 `--execute`를 붙입니다. 실행 로직은 `preset_runner.py`와 본체에만 있어 사례 파일을 복사해도 유지보수 코드가 늘어나지 않습니다.
+
+### 쇼핑몰 운영자용 예제 실행
+
+쇼핑몰 예제는 전부 **텍스트 전용 아이데이션 프리셋**입니다. 방향을 대량으로 탐색하는 용도이며, 레퍼런스 이미지를 넣어 실제 제품을 충실하게 보정하는 작업(`--image`)은 이 프리셋이 아니라 본체 제품사진 흐름을 사용해야 합니다.
+
+```bash
+# 기본값 그대로 dry-run으로 계획만 확인
+python3 examples/product_hero_shots_24.py
+
+# 프롬프트만 우리 상품으로 바꿔 실제 생성
+python3 examples/marketplace_thumbnails_32.py \
+  --prompt "핸드메이드 소이캔들 3종 썸네일 컷" \
+  --execute
+
+# 수량과 출력 폴더까지 덮어쓰기
+python3 examples/seasonal_campaign_banners_16.py \
+  --prompt "설 선물세트 프로모션 배너 비주얼" \
+  --count 8 \
+  --output-root ./seollal-banners \
+  --execute
+```
 
 Windows batch ledger가 OneDrive·SMB·백신의 짧은 파일 잠금과 충돌해 `WinError 5` 또는 `WinError 32`를 내면 atomic replace를 제한적으로 재시도합니다. 출력 경로의 symlink뿐 아니라 junction/reparse point도 거부합니다. `npm test`와 install smoke는 Windows/macOS/Linux CI에서 각각 실행됩니다.
 

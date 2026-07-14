@@ -1,6 +1,6 @@
 {
   "name": "heituz-imggen2-skill",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": false,
   "description": "Provenance-safe ChatGPT subscription image production skill.",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "scripts/fixtures/**"
   ],
   "scripts": {
-    "test": "python3 -m unittest discover -s scripts -p 'test_*.py' -v && python3 -m py_compile scripts/*.py && node scripts/test_installer_privacy.mjs && node scripts/test_unified_installer.mjs",
+    "test": "python3 -m unittest discover -s scripts -p 'test_*.py' -v && python3 -m py_compile scripts/*.py && node scripts/test_installer_privacy.mjs && node scripts/test_unified_installer.mjs && node scripts/test_vision_qc_setup.mjs",
     "smoke:install": "node scripts/install.mjs --target /tmp/HeiTuzimgGen2-install-smoke",
     "smoke:runtime": "python3 -m unittest discover -s scripts -p 'test_*.py' -v"
   },

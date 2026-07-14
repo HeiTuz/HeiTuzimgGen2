@@ -32,13 +32,15 @@ GEMINI_API_KEY_ENVS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-3-flash-preview"
 LUNA_MODEL = "gpt-5.6-luna"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_THUMBNAIL_BYTES = 300 * 1024
 MAX_RESPONSE_CHARS = 128 * 1024
 THUMBNAIL_MAX_EDGE = 1024
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+QC_MODES = frozenset({"auto", "gemini-luna", "gemini", "luna", "off"})
+QC_CONFIG_VERSION = 1
 
 
 class ImageQcError(RuntimeError):
@@ -49,6 +51,73 @@ class PrimaryReviewError(ImageQcError):
     def __init__(self, message: str, *, transient: bool = False) -> None:
         super().__init__(message)
         self.transient = transient
+
+def default_qc_config_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "vision-qc.json"
+
+
+def load_qc_config(config_path: Path | None) -> tuple[str, Path | None]:
+    path = (config_path or default_qc_config_path()).expanduser()
+    if not path.exists() and not path.is_symlink() and config_path is None:
+        return "off", None
+    try:
+        mode = path.lstat().st_mode
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ImageQcError(f"Vision-QC config does not exist: {path}") from exc
+    if stat.S_ISLNK(mode) or not resolved.is_file():
+        raise ImageQcError(f"Vision-QC config must be a regular non-symlink file: {path}")
+    try:
+        value = json.loads(resolved.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ImageQcError("Vision-QC config is not valid JSON.") from exc
+    allowed = {"version", "qc_mode", "requested_mode"}
+    if not isinstance(value, dict) or not {"version", "qc_mode"}.issubset(value) or not set(value).issubset(allowed):
+        raise ImageQcError("Vision-QC config must contain only version, qc_mode, and optional requested_mode.")
+    if type(value["version"]) is not int or value["version"] != QC_CONFIG_VERSION or not isinstance(value["qc_mode"], str) or value["qc_mode"] not in QC_MODES:
+        raise ImageQcError("Vision-QC config has an unsupported version or qc_mode.")
+    return value["qc_mode"], resolved
+
+
+def configured_api_key() -> tuple[str | None, str]:
+    for name in GEMINI_API_KEY_ENVS:
+        value = os.environ.get(name, "")
+        if value:
+            return name, value
+    return None, ""
+
+
+def codex_is_available(codex_bin: str | Path | None = None) -> bool:
+    try:
+        resolve_codex_command(explicit=codex_bin)
+        return True
+    except CodexResolutionError:
+        return False
+
+
+def resolve_qc_mode(cli_mode: str | None, config_path: Path | None, codex_bin: str | Path | None = None) -> dict[str, object]:
+    configured_mode, resolved_config = load_qc_config(config_path)
+    env_mode = os.environ.get("HEITUZ_VISION_QC_MODE", "").strip() or None
+    if env_mode is not None and env_mode not in QC_MODES:
+        raise ImageQcError("HEITUZ_VISION_QC_MODE has an unsupported value.")
+    requested_mode = cli_mode or env_mode or configured_mode
+    source = "command_line" if cli_mode is not None else ("environment" if env_mode is not None else ("config" if resolved_config is not None else "default"))
+    if requested_mode == "off":
+        raise ImageQcError("Vision-QC is disabled by configuration; no review can be performed.")
+    effective_mode = requested_mode
+    if requested_mode == "auto":
+        _, api_key = configured_api_key()
+        has_codex = codex_is_available(codex_bin)
+        effective_mode = "gemini-luna" if api_key and has_codex else ("gemini" if api_key else ("luna" if has_codex else "off"))
+        if effective_mode == "off":
+            raise ImageQcError("Vision-QC auto mode found neither a Gemini API key nor an available Codex CLI.")
+    return {
+        "requested": requested_mode,
+        "effective": effective_mode,
+        "source": source,
+        "config": str(resolved_config) if resolved_config is not None else None,
+    }
+
 
 
 def canonical_json(value: object) -> str:
@@ -100,7 +169,7 @@ def _normalize_text(value: str, *, field: str, limit: int) -> str:
     return normalized
 
 
-def build_request(image: Path, brief: str, expected_text: Sequence[str], job_id: str | None) -> dict[str, object]:
+def build_request(image: Path, brief: str, expected_text: Sequence[str], job_id: str | None, qc_mode: str = "gemini") -> dict[str, object]:
     image_digest, image_size = file_digest(image)
     image_width, image_height = image_dimensions(image)
     normalized_text = [_normalize_text(item, field="Expected text", limit=1_000) for item in expected_text]
@@ -119,6 +188,7 @@ def build_request(image: Path, brief: str, expected_text: Sequence[str], job_id:
         "brief": _normalize_text(brief, field="Brief", limit=8_000),
         "expected_text": normalized_text,
         "id": job_id,
+        "qc_mode": qc_mode,
     }
 
 
@@ -335,7 +405,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-text", action="append", default=[], help="Exact text expected in the image; repeatable.")
     parser.add_argument("--id", help="Optional batch job id; makes the output usable as QC JSONL.")
     parser.add_argument("--output", type=Path, help="New one-line JSONL report path; otherwise write to stdout.")
-    parser.add_argument("--codex-bin", type=Path, help="Official Codex CLI executable used only for the Luna fallback.")
+    parser.add_argument("--codex-bin", type=Path, help="Official Codex CLI executable used only for Luna review.")
+    parser.add_argument("--qc-mode", choices=sorted(QC_MODES), help="Override the configured QC mode.")
+    parser.add_argument("--qc-config", type=Path, help="Vision-QC JSON config path; default is the platform user config.")
     parser.add_argument("--primary-timeout-seconds", type=int, default=45)
     parser.add_argument("--luna-timeout-seconds", type=int, default=120)
     parser.add_argument("--execute", action="store_true", help="Run approved external QC; default is dry-run.")
@@ -349,30 +421,47 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = args.output.expanduser().resolve() if args.output is not None else None
         if output is not None and (output.exists() or not output.parent.is_dir()):
             raise ImageQcError(f"Report path must be new and its directory must exist: {output}")
-        review_request = build_request(image, args.brief, args.expected_text, args.id)
+        mode = resolve_qc_mode(args.qc_mode, args.qc_config, args.codex_bin)
+        review_request = build_request(image, args.brief, args.expected_text, args.id, str(mode["effective"]))
         digest = request_digest(review_request)
         if not args.execute:
-            print(json.dumps({"state": "dry_run", "request_sha256": digest, "approval_env": APPROVAL_ENV, "image": review_request["image"], "thumbnail": "ephemeral JPEG only"}, ensure_ascii=False, indent=2))
+            print(json.dumps({"state": "dry_run", "request_sha256": digest, "approval_env": APPROVAL_ENV, "image": review_request["image"], "thumbnail": "ephemeral JPEG only", "qc_mode": mode}, ensure_ascii=False, indent=2))
             return 0
         if os.environ.get(APPROVAL_ENV) != digest:
             raise ImageQcError(f"Set {APPROVAL_ENV} to the dry-run request_sha256 immediately before --execute.")
-        api_key = next((os.environ.get(name, "") for name in GEMINI_API_KEY_ENVS if os.environ.get(name, "")), "")
         with tempfile.TemporaryDirectory(prefix="heituz-qc-") as tmp:
             thumbnail = Path(tmp) / "qc-thumbnail.jpg"
             thumbnail_bytes = create_compact_thumbnail(image, thumbnail)
             thumbnail_sha256, thumbnail_size = file_digest(thumbnail)
             thumbnail_width, thumbnail_height = image_dimensions(thumbnail)
             review_started = time.monotonic()
-            reviewed, route = review_thumbnail(build_question(review_request), thumbnail, thumbnail_bytes, api_key, args.primary_timeout_seconds, args.luna_timeout_seconds, args.codex_bin)
+            if mode["effective"] == "gemini-luna":
+                _, api_key = configured_api_key()
+                if not api_key:
+                    raise ImageQcError("Gemini-Luna mode requires GOOGLE_API_KEY or GEMINI_API_KEY.")
+                reviewed, route = review_thumbnail(build_question(review_request), thumbnail, thumbnail_bytes, api_key, args.primary_timeout_seconds, args.luna_timeout_seconds, args.codex_bin)
+            elif mode["effective"] == "gemini":
+                _, api_key = configured_api_key()
+                if not api_key:
+                    raise ImageQcError("Gemini mode requires GOOGLE_API_KEY or GEMINI_API_KEY.")
+                reviewed = run_gemini_primary(build_question(review_request), thumbnail_bytes, api_key, args.primary_timeout_seconds)
+                route = "gemini_primary"
+            elif mode["effective"] == "luna":
+                reviewed = run_luna_fallback(build_question(review_request), thumbnail, args.luna_timeout_seconds, args.codex_bin)
+                route = "luna_primary"
+            else:
+                raise ImageQcError("Unsupported effective Vision-QC mode.")
             elapsed_seconds = round(time.monotonic() - review_started, 3)
         report_raw = reviewed.get("report")
         if not isinstance(report_raw, dict):
             raise ImageQcError("Vision review report is malformed.")
         report: dict[str, object] = dict(report_raw)
         report.update({
-            "schema_version": 2, "reviewer": route, "requested_primary_model": GEMINI_MODEL,
-            "requested_fallback_model": LUNA_MODEL if route == "luna_fallback" else None,
+            "schema_version": 3, "reviewer": route,
+            "requested_primary_model": GEMINI_MODEL if mode["effective"] in {"gemini", "gemini-luna"} else LUNA_MODEL,
+            "requested_fallback_model": LUNA_MODEL if mode["effective"] == "gemini-luna" else None,
             "model_identity_attested": False, "request_sha256": digest, "reviewed_image": review_request["image"],
+            "qc_mode": {key: mode[key] for key in ("requested", "effective", "source")},
             "elapsed_seconds": elapsed_seconds,
             "reviewed_thumbnail": {
                 "sha256": thumbnail_sha256, "bytes": thumbnail_size,

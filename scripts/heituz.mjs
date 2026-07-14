@@ -61,11 +61,14 @@ function usage(code = 0) {
 Usage:
   heituz update [--dry-run] [--codex]
   heituz status
+  heituz vision-qc setup
+  heituz vision-qc status
 
 Commands:
   update       Refresh HeiTuzImgGen2 and HeiTuzMPW from their canonical GitHub repositories.
                Codex updates only when missing or when --codex is supplied.
   status       Print the recorded installation targets.
+  vision-qc    Show safe session-only Google AI Studio key setup or API-key status.
 `);
   process.exit(code);
 }
@@ -80,7 +83,8 @@ export function update(manifest, { dryRun, forceCodex }) {
     run(plan.command, plan.args, { dryRun, label: "official Codex CLI install/update" });
   }
   const npx = npxCommand(windows);
-  run(npx, ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex"], { dryRun, label: "HeiTuzImgGen2 update" });
+  const visionQc = manifest.vision_qc_requested || manifest.vision_qc_mode || "off";
+  run(npx, ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex", "--vision-qc", visionQc], { dryRun, label: "HeiTuzImgGen2 update" });
   run(npx, ["--yes", MPW_REPO, "--", "--dest", manifest.mpw_target, "--force", "--quiet"], { dryRun, label: "HeiTuzMPW update" });
 }
 
@@ -93,6 +97,14 @@ function main(argv) {
   const data = JSON.parse(fs.readFileSync(manifest, "utf8"));
   if (command === "status") {
     console.log(JSON.stringify({ ...data, codex_present: codexExists(locations().windows) }, null, 2));
+    return;
+  }
+  if (command === "vision-qc") {
+    const action = argv[1] || "setup";
+    if (!new Set(["setup", "status"]).has(action) || argv.length !== 2) usage(2);
+    const setup = path.join(data.imggen2_target, "scripts", "vision_qc_setup.mjs");
+    if (!fs.existsSync(setup)) throw new Error("Vision-QC setup is unavailable; run heituz update.");
+    run(process.execPath, [setup, ...(action === "status" ? ["--status"] : [])], { label: "Vision-QC setup" });
     return;
   }
   if (command !== "update") usage(2);

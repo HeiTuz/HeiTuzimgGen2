@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.6.0
+version: 1.7.0
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -84,7 +84,8 @@ The first cut is a sequential capability-and-quality pilot. Bounded fan-out begi
 
 Run `gemini_image_qc.py` for every generated delivery candidate **before** `vision_analyze`. The full original remains the delivery artifact and is never uploaded or modified. QC uses only an ephemeral JPEG thumbnail with a 1024 px long-edge limit and a 300 KiB cap.
 
-Primary review calls the Gemini Developer API model `gemini-3-flash-preview` with `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) sent only in the `x-goog-api-key` header. The key must never appear in URLs, reports, errors, or logs. A timeout, HTTP 429, or HTTP 5xx triggers exactly one fallback through the official Codex ChatGPT-subscription CLI model `gpt-5.6-luna` using the same thumbnail and QC question. Hard 4xx and malformed primary responses do not fall back. The dry-run `request_sha256` must be supplied in `HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256` immediately before `--execute`.
+The installed `vision-qc.json` contains only `{version, requested_mode, qc_mode}` and never credentials. `auto` resolves to `gemini-luna` when both a Gemini key and Codex are available, `gemini` when only a key is available, `luna` when only Codex is available, and `off` otherwise. `gemini-luna` permits the bounded Luna fallback, `gemini` never falls back, `luna` uses direct Codex-subscription review, and `off` blocks QC fail-closed. `--qc-mode` overrides `HEITUZ_VISION_QC_MODE`, which overrides the installed mode; every resolved mode is included in its approval hash. `heituz vision-qc setup` displays safe session-only credential setup.
+Gemini uses `gemini-3-flash-preview` with the key only in `x-goog-api-key`; a Gemini timeout, HTTP 429, or HTTP 5xx permits exactly one Luna retry. Hard 4xx and malformed Gemini responses fail closed. The dry-run `request_sha256` includes the resolved QC mode and must be supplied in `HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256` immediately before `--execute`.
 
 ```bash
 python scripts/gemini_image_qc.py output.png \

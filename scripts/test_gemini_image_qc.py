@@ -56,15 +56,57 @@ class GeminiImageQcTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             image = self.make_image(Path(tmp))
             with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                self.assertEqual(qc.main([str(image), "--brief", "Catalog product image"]), 0)
+                self.assertEqual(qc.main([str(image), "--brief", "Catalog product image", "--qc-mode", "gemini"]), 0)
             first = json.loads(stdout.getvalue())
             Image.new("RGB", (16, 12), (200, 10, 10)).save(image)
             with patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                self.assertEqual(qc.main([str(image), "--brief", "Catalog product image"]), 0)
+                self.assertEqual(qc.main([str(image), "--brief", "Catalog product image", "--qc-mode", "gemini"]), 0)
             second = json.loads(stdout.getvalue())
         self.assertEqual(first["state"], "dry_run")
         self.assertNotEqual(first["request_sha256"], second["request_sha256"])
         self.assertEqual(first["thumbnail"], "ephemeral JPEG only")
+    def test_qc_mode_resolves_config_cli_and_available_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "vision-qc.json"
+            config.write_text(json.dumps({"version": 1, "qc_mode": "auto"}), encoding="utf-8")
+            with patch.dict(qc.os.environ, {"GOOGLE_API_KEY": "", "GEMINI_API_KEY": "", "HEITUZ_VISION_QC_MODE": ""}), patch.object(qc, "codex_is_available", return_value=True):
+                automatic = qc.resolve_qc_mode(None, config)
+            self.assertEqual(automatic["requested"], "auto")
+            self.assertEqual(automatic["effective"], "luna")
+            self.assertEqual(automatic["source"], "config")
+            with patch.dict(qc.os.environ, {"GOOGLE_API_KEY": "test-key", "GEMINI_API_KEY": "", "HEITUZ_VISION_QC_MODE": ""}), patch.object(qc, "codex_is_available", return_value=True):
+                keyed = qc.resolve_qc_mode(None, config)
+            self.assertEqual(keyed["effective"], "gemini-luna")
+            with patch.dict(qc.os.environ, {"HEITUZ_VISION_QC_MODE": "gemini", "GOOGLE_API_KEY": "test-key"}):
+                env_selected = qc.resolve_qc_mode(None, config)
+            self.assertEqual(env_selected["effective"], "gemini")
+            self.assertEqual(env_selected["source"], "environment")
+            overridden = qc.resolve_qc_mode("luna", config)
+            self.assertEqual(overridden["requested"], "luna")
+            self.assertEqual(overridden["effective"], "luna")
+            self.assertEqual(overridden["source"], "command_line")
+
+    def test_qc_config_rejects_credentials_and_disabled_mode_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "vision-qc.json"
+            config.write_text(json.dumps({"version": 1, "qc_mode": "auto", "GOOGLE_API_KEY": "secret"}), encoding="utf-8")
+            with self.assertRaisesRegex(qc.ImageQcError, "only version"):
+                qc.resolve_qc_mode(None, config)
+            config.write_text(json.dumps({"version": 1, "qc_mode": "off"}), encoding="utf-8")
+            with self.assertRaisesRegex(qc.ImageQcError, "disabled"):
+                qc.resolve_qc_mode(None, config)
+
+    def test_dry_run_records_resolved_qc_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = self.make_image(root)
+            config = root / "vision-qc.json"
+            config.write_text(json.dumps({"version": 1, "qc_mode": "luna"}), encoding="utf-8")
+            with patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                self.assertEqual(qc.main([str(image), "--brief", "Catalog product image", "--qc-config", str(config)]), 0)
+            result = json.loads(stdout.getvalue())
+        self.assertEqual(result["qc_mode"]["requested"], "luna")
+        self.assertEqual(result["qc_mode"]["effective"], "luna")
     def test_thumbnail_is_compact_jpeg_and_preserves_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -174,7 +174,7 @@ class SkillContractTests(unittest.TestCase):
             SKILL_ROOT / "references" / "fixtures" / "apparel-handoff.valid.json",
         ):
             self.assertTrue(executable.is_file())
-        self.assertIn("version: 1.6.0", skill)
+        self.assertIn("version: 1.7.0", skill)
 
 
 class OutputPathTests(unittest.TestCase):

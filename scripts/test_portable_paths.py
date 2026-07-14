@@ -75,7 +75,7 @@ class PortablePathTests(unittest.TestCase):
     def test_normal_local_path_is_unchanged(self):
         with tempfile.TemporaryDirectory() as tmp:
             value = str(Path(tmp) / "한글 image.png")
-            self.assertEqual(paths.normalize_local_path(value, platform="darwin"), value)
+            self.assertEqual(paths.normalize_local_path(value, platform=sys.platform), value)
 
 
 if __name__ == "__main__":

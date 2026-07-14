@@ -293,7 +293,15 @@ def atomic_write_json(path: Path, value: object) -> None:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp, path)
+        for attempt, delay in enumerate((0.05, 0.1, 0.2, 0.4, 0.8), 1):
+            try:
+                os.replace(temp, path)
+                break
+            except OSError as exc:
+                error_code = getattr(exc, "winerror", None) or exc.errno
+                if os.name != "nt" or error_code not in {5, 32} or attempt == 5:
+                    raise
+                time.sleep(delay)
         try:
             directory_fd = os.open(path.parent, os.O_RDONLY)
         except OSError:  # directory fsync is unavailable on some platforms

@@ -336,6 +336,27 @@ class BatchExecutionTests(unittest.TestCase):
         self.assertEqual(status, 2)
         self.assertEqual(json.loads(stderr.getvalue()), {"error": "disk denied"})
 
+    def test_atomic_write_retries_transient_windows_replace_denial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "ledger.json"
+            original_replace = batch.os.replace
+            attempts = 0
+
+            def transient_replace(source, target):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise PermissionError(5, "Access is denied", str(target))
+                return original_replace(source, target)
+
+            with patch.object(batch.os, "replace", side_effect=transient_replace), patch.object(batch.time, "sleep") as sleep:
+                batch.atomic_write_json(destination, {"state": "saved"})
+
+            self.assertEqual(json.loads(destination.read_text(encoding="utf-8")), {"state": "saved"})
+            self.assertEqual(attempts, 3)
+            self.assertEqual(sleep.call_count, 2)
+            self.assertFalse(list(destination.parent.glob(".ledger.json.*.tmp")))
+
     def test_dry_run_does_not_call_transport_or_create_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); manifest, _ = self.make_manifest(root)

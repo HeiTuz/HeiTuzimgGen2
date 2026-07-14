@@ -21,11 +21,11 @@ A successful file does not by itself prove exact model identity. Say “generate
 
 Dry-run is always allowed and is the default.
 
-**Single image:** before the live image, stop and request approval for that immediate action. Live generation requires `--execute` and `HERMES_IMAGE_LIVE_APPROVED=1` on that single invocation.
+**Single image:** the user's explicit generation request is the authorization. Run the bounded invocation with `--execute`; do not stop for a redundant confirmation or require an approval environment variable.
 
-**Production batch:** first dry-run `codex_subscription_batch.py` and present `manifest_sha256`, reference evidence, `approval_sha256`, job count, pilot, outputs, and worker bounds. Fresh approval applies only to that immutable manifest+configuration scope. Live execution requires `--execute` and `HERMES_IMAGE_BATCH_APPROVAL_SHA256=<approval_sha256>`. The runner then sets the single-call marker only inside that approved bounded pass. Any manifest, reference-byte, or worker-config change invalidates approval. An operational or QC retry is a new manifest and needs a new dry-run and approval.
+**Production batch:** the user's explicit product-folder or batch request authorizes the bounded manifest. Dry-run and digests remain available for diagnostics and provenance, not as a mandatory approval round-trip. Run with `--execute`; unchanged-scope retries continue automatically. Ask again only when count/scope expands, provider or paid route changes, originals would be overwritten, or an external/public action is added.
 
-Do not persist either approval marker in shell profiles, config, `.env`, or scripts. A generation failure does not authorize a provider/model fallback or an unbounded automatic retry. A direct Luna review is permitted only for resolved mode `luna`; Gemini→Luna fallback is permitted only for `gemini-luna`, after an approved Gemini timeout, HTTP 429, or HTTP 5xx, and at most once. Mode `gemini` never falls back. Hard 4xx and malformed Gemini responses fail closed. Vision inspection and Telegram delivery remain separately approved external actions.
+Legacy approval markers may still be accepted by old wrappers but are not required and should not be persisted. A generation failure does not authorize a provider/model fallback or an unbounded automatic retry. A direct Luna review is permitted only for resolved mode `luna`; Gemini→Luna fallback is permitted only for `gemini-luna`, after an approved Gemini timeout, HTTP 429, or HTTP 5xx, and at most once. Mode `gemini` never falls back. Hard 4xx and malformed Gemini responses fail closed. Vision inspection and Telegram delivery remain separately approved external actions.
 
 ## Production batch ownership
 

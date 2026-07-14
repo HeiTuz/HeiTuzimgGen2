@@ -29,7 +29,7 @@ Never use API-key billing for image generation, private endpoints, DOM automatio
 ## Boundaries
 
 - A successful transport proves only that an artifact was obtained; it does not prove visual acceptance or a particular model identity.
-- Live image execution requires a fresh approval marker immediately before `--execute`.
+- An explicit user request to create images authorizes the bounded generation scope. `--execute` runs it without a second confirmation or approval-marker ceremony. Fresh approval is required only for scope/count expansion, provider or paid-route changes, overwriting originals, or external publication/delivery.
 - The presence of xAI credentials never changes routing. Bare image and exact-count requests stay on Codex. Grok activates only on explicit provider intent and fails closed as `grok_route: disabled` when `xai-oauth` or the native xAI `image_generate` tool is unavailable.
 - The apparel browser executor is dry-run by default. Live browser execution requires an explicitly configured external adapter through `HEITUZ_BROWSER_ADAPTER_SCRIPT`; it never falls back to another browser, provider, or API.
 - Browser candidate tasks receive the same complete source inventory, role map, folder master, QC contract, and output inventory. Their sessions, ledgers, downloads, and candidate roots remain disjoint.
@@ -48,7 +48,7 @@ python scripts/codex_subscription_transport.py \
   --output "$PWD/output/edited.png"
 ```
 
-Both commands are dry-runs until `--execute` is supplied with the required fresh approval marker. See [references/execution-contract.md](references/execution-contract.md).
+Both commands remain dry-runs unless `--execute` is supplied. The user's explicit generation request authorizes that bounded invocation; no additional marker is required. See [references/execution-contract.md](references/execution-contract.md).
 
 ### Explicit Grok OAuth route
 
@@ -85,7 +85,7 @@ The first cut is a sequential capability-and-quality pilot. Bounded fan-out begi
 Run `gemini_image_qc.py` for every generated delivery candidate **before** `vision_analyze`. The full original remains the delivery artifact and is never uploaded or modified. QC uses only an ephemeral JPEG thumbnail with a 1024 px long-edge limit and a 300 KiB cap.
 
 The installed `vision-qc.json` contains only `{version, requested_mode, qc_mode}` and never credentials. `auto` resolves to `gemini-luna` when both a Gemini key and Codex are available, `gemini` when only a key is available, `luna` when only Codex is available, and `off` otherwise. `gemini-luna` permits the bounded Luna fallback, `gemini` never falls back, `luna` uses direct Codex-subscription review, and `off` blocks QC fail-closed. `--qc-mode` overrides `HEITUZ_VISION_QC_MODE`, which overrides the installed mode; every resolved mode is included in its approval hash. `heituz vision-qc setup` displays safe session-only credential setup.
-Gemini uses `gemini-3-flash-preview` with the key only in `x-goog-api-key`; a Gemini timeout, HTTP 429, or HTTP 5xx permits exactly one Luna retry. Hard 4xx and malformed Gemini responses fail closed. The dry-run `request_sha256` includes the resolved QC mode and must be supplied in `HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256` immediately before `--execute`.
+Gemini uses `gemini-3-flash-preview` with the key only in `x-goog-api-key`; a Gemini timeout, HTTP 429, or HTTP 5xx permits exactly one Luna retry. Hard 4xx and malformed Gemini responses fail closed. The dry-run `request_sha256` remains provenance evidence; QC runs as an internal consequence of the authorized generation and needs no second approval.
 
 ```bash
 python scripts/gemini_image_qc.py output.png \
@@ -93,7 +93,6 @@ python scripts/gemini_image_qc.py output.png \
   --expected-text "Navy Essential Tee" \
   --id navy-front
 
-HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256="<dry-run request_sha256>" \
 python scripts/gemini_image_qc.py output.png \
   --brief "Source-faithful product image on a clean white background" \
   --expected-text "Navy Essential Tee" \
@@ -115,7 +114,7 @@ The one-line report records the selected route, requested primary/fallback model
 
 Vision role records may provide explicit `color_identity` values for `color_front` records. Ordinary product folders may instead omit the role map and use the public naming contract: `f1` front, `b1` back, `cN` alternate/color fronts, `dN` details, and `sN` composite-only sources. Colors and candidate attempts are independent: `candidate_attempt_count` defaults to three complete attempts whether the product has one color or many.
 
-Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Selection is whole-set only—cuts from different attempts are never mixed. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
+Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Selection is whole-set only—cuts from different attempts are never mixed. Product originals remain outside the run root and are read-only. After verified selection, disposable `candidate-set-*` work directories are deleted automatically and only `selected/` plus minimal provenance remains; this cleanup requires no extra approval. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/browser-gpt-three-fullset-selector.md](references/browser-gpt-three-fullset-selector.md).
 
 ## Verification
 

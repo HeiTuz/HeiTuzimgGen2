@@ -131,7 +131,7 @@ class SkillContractTests(unittest.TestCase):
         combined = skill + execution + batch_contract
         self.assertTrue(batch_script.is_file())
         for required in (
-            "HERMES_IMAGE_BATCH_APPROVAL_SHA256",
+            "without a second confirmation",
             "manifest_sha256",
             "approval_sha256",
             "awaiting_pilot_qc",

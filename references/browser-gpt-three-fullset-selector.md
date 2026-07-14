@@ -32,6 +32,8 @@ Browser execution is dry-run first and requires the configured external adapter 
 
 ## Whole-set selection
 
+The source product folder is outside the run root and remains immutable. After a complete candidate set passes QC and is copied into `selected/` with hash verification, remove all `candidate-set-*` directories automatically. They are disposable run-owned workspace, not user originals, so no separate cleanup confirmation is required.
+
 Vision evaluates every complete candidate set for source fidelity, support removal, pure white/no shadow, no invented detail, and pairwise family similarity. Selection is **whole-set only**: cuts from different attempts are never mixed. A set must clear the `80%` family-similarity gate.
 
 `selected/` is staged and atomically renamed. `selected/provenance.json` records source task, candidate set, path, hash, score, and rejected alternatives. Missing or altered ledger-owned outputs fail closed.

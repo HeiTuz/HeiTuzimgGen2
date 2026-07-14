@@ -194,11 +194,13 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
             command.index("--"),
         )
 
-    def test_live_call_requires_fresh_approval_marker(self):
+    def test_live_call_needs_no_redundant_approval_marker(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(
             transport, "resolve_codex_command", return_value=self._resolved()
-        ), patch.dict(os.environ, {}, clear=True):
-            with self.assertRaisesRegex(transport.TransportError, transport.APPROVAL_ENV):
+        ), patch.dict(os.environ, {}, clear=True), patch.object(
+            transport.subprocess, "run", side_effect=RuntimeError("transport reached")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "transport reached"):
                 transport.run("draw", Path(tmp) / "image.png", [], execute=True)
 
     def test_references_are_bounded_and_must_exist(self):

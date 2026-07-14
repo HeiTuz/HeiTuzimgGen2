@@ -29,10 +29,9 @@ python scripts/codex_subscription_batch.py \
   --workers auto
 ```
 
-It prints `manifest_sha256` and `approval_sha256`. The canonical manifest digest includes normalized records, resolved reference paths, and each reference file's SHA-256/size, so changing reference bytes invalidates approval even when the filename stays the same. `approval_sha256` additionally binds `workers`, start, hard cap, ramp interval, and RAM estimate. Live execution requires fresh review of both and uses the printed `approval_sha256` marker:
+It prints `manifest_sha256` and `approval_sha256` as provenance. The canonical manifest digest includes normalized records, resolved reference paths, and each reference file's SHA-256/size. `approval_sha256` additionally binds `workers`, start, hard cap, ramp interval, and RAM estimate. An explicit user batch request authorizes this bounded scope; live execution uses `--execute` without copying the digest into an environment variable.
 
 ```bash
-HERMES_IMAGE_BATCH_APPROVAL_SHA256=<dry-run-approval_sha256> \
 python scripts/codex_subscription_batch.py \
   --manifest jobs.jsonl \
   --output-root ./outputs \
@@ -40,7 +39,7 @@ python scripts/codex_subscription_batch.py \
   --execute
 ```
 
-Do not persist the marker. Any prompt, path, reference, order, or metadata change changes the hash and invalidates approval. A failed or QC-failed pass does not authorize retry; the generated retry manifest is a new manifest requiring a new dry-run and fresh hash-bound approval.
+Digests still detect drift. Failed or QC-failed items may be retried automatically inside the unchanged user-requested scope. Scope/count expansion, provider or paid-route changes, original overwrite, and external publication require a fresh user decision.
 
 ## Pilot and fan-out
 
@@ -102,7 +101,7 @@ python scripts/codex_subscription_batch.py \
   --manifest retry.jsonl \
   --output-root ./outputs \
   --ledger ./outputs/.heituzimggen2-retry.json
-# inspect hash, obtain fresh approval, then repeat with --execute
+# repeat with --execute inside the unchanged authorized scope
 ```
 
 The shared output-root lock prevents original/retry runners from overlapping, while separate ledgers preserve each manifest's identity. A custom ledger also receives custom `<ledger-stem>-summary.json/.md` files, so retry summaries do not overwrite the original batch summary.
@@ -112,7 +111,7 @@ The shared output-root lock prevents original/retry runners from overlapping, wh
 Parallel workers are useful above the runner rather than as an excuse to omit batch support:
 
 1. **Compiler/planner lanes** can independently classify folders and compile disjoint JSONL records through `HeiTuzMPW`.
-2. **Executor lanes** may own disjoint manifest shards only when each shard has a separate output root, ledger, and fresh hash-bound approval. Two agents must never share one live ledger/output root.
+2. **Executor lanes** may own disjoint manifest shards only when each shard has a separate output root and ledger inside the authorized scope. Two agents must never share one live ledger/output root.
 3. **Critic lanes** can inspect disjoint output sets and return QC JSONL; they do not mutate PNGs or mark their own work accepted.
 4. **Prime/aggregator** validates unique IDs/output ownership, runs or supervises the authoritative pilot, reconciles ledgers and QC, generates retry manifests, and verifies final artifacts.
 

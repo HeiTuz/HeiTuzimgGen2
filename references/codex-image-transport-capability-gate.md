@@ -30,7 +30,7 @@ Do not hard-code a permanent negative conclusion from one host/version failure. 
 - If the same request succeeds sequentially but fails only under fan-out, treat concurrency as the changed variable: lower the config-bound worker cap, dry-run again, and obtain approval for the new digest. Do not mutate unrelated model/provider settings or silently switch routes.
 - Parse structured JSON event types and stable error codes when available. Do not print or persist raw stdout/stderr because it may contain account/session data.
 - If the failure classifier returns `unknown`, improve secret-safe classification from documented/stable codes rather than exposing raw output.
-- After a failed live call, do not retry automatically. Diagnose, change one justified variable, and obtain fresh approval immediately before the next live call.
+- After a failed live call, diagnose and change only one justified variable. Retry automatically only inside the unchanged requested scope; provider, cost, count, or overwrite changes require a fresh decision.
 
 ## Public-release gate
 

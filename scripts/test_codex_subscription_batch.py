@@ -246,12 +246,14 @@ class BatchExecutionTests(unittest.TestCase):
             with self.assertRaisesRegex(batch.BatchError, "hard_cap=2"):
                 batch.run_batch(manifest, root / "out", workers="3", hard_cap=2)
 
-    def test_live_requires_manifest_bound_approval(self):
+    def test_live_uses_manifest_provenance_without_env_ceremony(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); manifest, _ = self.make_manifest(root, 1)
             with patch.dict(os.environ, {batch.BATCH_APPROVAL_ENV: "wrong"}, clear=False):
-                with self.assertRaisesRegex(batch.BatchError, "exact approval"):
-                    batch.run_batch(manifest, root / "out", execute=True, runner=FakeRunner())
+                result = batch.run_batch(manifest, root / "out", execute=True, runner=FakeRunner())
+            self.assertTrue(result["awaiting_pilot_qc"])
+            ledger = batch.load_ledger(root / "out" / batch.LEDGER_NAME)
+            self.assertIn("approval_sha256", ledger["config"])
 
     def test_pilot_failure_stops_fanout(self):
         with tempfile.TemporaryDirectory() as tmp:

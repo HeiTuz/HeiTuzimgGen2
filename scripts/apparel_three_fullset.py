@@ -486,11 +486,11 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
     shared = read_json(folder_root / "shared-folder-contract.json")
     candidate_sets = _coordinator_candidate_sets(coordinator, shared)
     outputs = shared["outputs"]
-    verified_candidates = _verified_candidate_outputs(folder_root, coordinator, shared, candidate_sets)
     selected_root = folder_root / "selected"
     resumed = _resume_selected(selected_root, outputs)
     if resumed is not None:
         return resumed
+    verified_candidates = _verified_candidate_outputs(folder_root, coordinator, shared, candidate_sets)
 
     report = read_json(report_path)
     if report.get("shared_contract_sha256") != coordinator["shared_contract_sha256"]:
@@ -592,6 +592,13 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             stage.rename(selected_root)
         except FileExistsError as exc:
             raise ContractError("selected/ appeared during selection; refusing overwrite") from exc
+        # candidate-set-* directories are disposable workspace owned by this
+        # run. Originals live outside folder_root and were already proven
+        # non-overlapping during prepare, so retain only the selected whole set.
+        for set_name in candidate_sets:
+            candidate_root = folder_root / set_name
+            if candidate_root.exists():
+                shutil.rmtree(candidate_root)
         return provenance
     finally:
         if stage.exists():

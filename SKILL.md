@@ -1,6 +1,6 @@
 ---
 name: HeiTuzimgGen2
-description: "Generate and edit images through the official Codex CLI using ChatGPT subscription authentication. Includes provenance-safe single-image transport, resumable JSONL batches, independent QC, and an optional dynamic apparel full-set workflow."
+description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
 version: 1.6.0
 author: HeiTuz
 license: MIT
@@ -13,21 +13,24 @@ metadata:
 
 # HeiTuzimgGen2
 
-Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. The skill remains a standalone transport and result-QC tool. When `HeiTuzMPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
+Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. Codex remains the default for every ordinary request. A separate Grok route exists only for a current request that explicitly names `Grok`, `그록`, or `xAI` as the image provider, and only when Hermes has `xai-oauth` plus its native xAI `image_generate` tool. The skill remains a transport and result-QC tool. When `HeiTuzMPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
 
 ## Capabilities
 
 - text-to-image, edits, and two-to-four reference compositions;
 - dry-run-first transport with exclusive output creation and session-scoped artifact provenance;
 - resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
-- optional apparel full-set preparation: one complete candidate set per unique normalized Vision `color_front` identity, followed by cross-set selection at a minimum 80% family-similarity gate.
+- explicit-only Grok image generation through Hermes native `image_generate`, gated on `xai-oauth`, with exact-N queueing that starts at 3 active jobs and never exceeds 5;
+- required post-generation Gemini/Luna image QC before `vision_analyze`, with thumbnail-only review, strict structured output, and provenance-bound reports;
+- optional apparel full-set preparation: one complete candidate set per unique normalized `color_identity` from Vision `color_front` records, followed by cross-set selection at a minimum 80% family-similarity gate.
 
-Never use api-key billing, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. Never fall back to a different provider, API route, browser session, or model. never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use `send_message` with a document/file attachment; printing the path is not delivery evidence.
+Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. The post-generation QC exception may use the preconfigured Google Gemini Developer API key for `gemini-3-flash-preview`; its only fallback is exactly one `gpt-5.6-luna` Codex-subscription review after a Gemini timeout, HTTP 429, or HTTP 5xx. Hard 4xx and malformed responses fail closed. Never fall back outside those explicit contracts. never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use `send_message` with a document/file attachment; printing the path is not delivery evidence.
 
 ## Boundaries
 
 - A successful transport proves only that an artifact was obtained; it does not prove visual acceptance or a particular model identity.
 - Live image execution requires a fresh approval marker immediately before `--execute`.
+- The presence of xAI credentials never changes routing. Bare image and exact-count requests stay on Codex. Grok activates only on explicit provider intent and fails closed as `grok_route: disabled` when `xai-oauth` or the native xAI `image_generate` tool is unavailable.
 - The apparel browser executor is dry-run by default. Live browser execution requires an explicitly configured external adapter through `HEITUZ_BROWSER_ADAPTER_SCRIPT`; it never falls back to another browser, provider, or API.
 - Browser candidate tasks receive the same complete source inventory, role map, folder master, QC contract, and output inventory. Their sessions, ledgers, downloads, and candidate roots remain disjoint.
 
@@ -46,6 +49,12 @@ python scripts/codex_subscription_transport.py \
 ```
 
 Both commands are dry-runs until `--execute` is supplied with the required fresh approval marker. See [references/execution-contract.md](references/execution-contract.md).
+
+### Explicit Grok OAuth route
+
+Use Grok only when the current request explicitly says to generate or edit the image with `Grok`, `그록`, or `xAI`. Require a configured Hermes `xai-oauth` credential and the Hermes-native xAI `image_generate` tool in the current session. API-key-only environments do not qualify. If either gate is absent, stop without login, token inspection, or fallback.
+
+Do not invoke Grok through `hermes chat`, `progrok`, browser cookies, or a new private API client. A single request calls native `image_generate` once. An exact-N request creates N independent jobs, runs one pilot through local materialization, hash verification, and QC, then fans out from 3 active jobs to a maximum of 5 while queueing the remainder. Failed-job-only retries never overwrite or repeat verified successes. Full contract: [references/grok-oauth-explicit-routing.md](references/grok-oauth-explicit-routing.md).
 
 ### Portable compiled handoff
 
@@ -71,6 +80,36 @@ python scripts/codex_subscription_batch.py \
 
 The first cut is a sequential capability-and-quality pilot. Bounded fan-out begins only after independent pilot QC passes. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
+### Post-generation Gemini/Luna image QC
+
+Run `gemini_image_qc.py` for every generated delivery candidate **before** `vision_analyze`. The full original remains the delivery artifact and is never uploaded or modified. QC uses only an ephemeral JPEG thumbnail with a 1024 px long-edge limit and a 300 KiB cap.
+
+Primary review calls the Gemini Developer API model `gemini-3-flash-preview` with `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) sent only in the `x-goog-api-key` header. The key must never appear in URLs, reports, errors, or logs. A timeout, HTTP 429, or HTTP 5xx triggers exactly one fallback through the official Codex ChatGPT-subscription CLI model `gpt-5.6-luna` using the same thumbnail and QC question. Hard 4xx and malformed primary responses do not fall back. The dry-run `request_sha256` must be supplied in `HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256` immediately before `--execute`.
+
+```bash
+python scripts/gemini_image_qc.py output.png \
+  --brief "Source-faithful product image on a clean white background" \
+  --expected-text "Navy Essential Tee" \
+  --id navy-front
+
+HERMES_GEMINI_IMAGE_QC_APPROVAL_SHA256="<dry-run request_sha256>" \
+python scripts/gemini_image_qc.py output.png \
+  --brief "Source-faithful product image on a clean white background" \
+  --expected-text "Navy Essential Tee" \
+  --id navy-front --execute
+```
+
+The one-line report records the selected route, requested primary/fallback models, original and thumbnail dimensions/bytes/hashes, standard four-axis QC, and observations. Requested model names are not model-identity evidence; `model_identity_attested` remains false.
+
+### Provider routing quick reference
+
+| Request | Route |
+| --- | --- |
+| Ordinary single image or exact-N batch | Codex subscription default |
+| Explicit “Grok/그록/xAI로 생성” with `xai-oauth` and native xAI `image_generate` available | Grok OAuth |
+| Explicit Grok request without both gates, including API-key-only | Disabled; no fallback |
+| Explicit Higgsfield request | Higgsfield skill; never Grok/Codex fallback |
+
 ### Apparel full-set preparation
 
 Vision role records must provide an explicit `color_identity` for every `color_front`. The count is normalized with Unicode NFKC, collapsed whitespace, and case folding:
@@ -90,4 +129,4 @@ python -m unittest discover -s scripts -p 'test_*.py' -v
 python -m py_compile scripts/*.py
 ```
 
-The test suite covers output collision handling, dry-run safety, session provenance, batch resume/retry/QC behavior, dynamic apparel task count, complete inventory, immutable source hashes, disjoint task paths, missing candidates, 80% selection, and delegation-cap packing.
+The test suite covers output collision handling, dry-run safety, session provenance, batch resume/retry/QC behavior, explicit-only Grok OAuth routing, API-key-only rejection, exact-N queueing without shrinking, dynamic apparel task count, complete inventory, immutable source hashes, disjoint task paths, missing candidates, 80% selection, and delegation-cap packing.

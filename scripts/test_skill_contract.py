@@ -90,6 +90,39 @@ class SkillContractTests(unittest.TestCase):
         for boundary in ("api-key billing", "private endpoints", "dom automation", "cookie extraction"):
             self.assertIn(boundary, text)
         self.assertIn("never fall back", text)
+
+    def test_grok_route_is_explicit_oauth_only_and_exact_n_is_queued(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        route_path = SKILL_ROOT / "references" / "grok-oauth-explicit-routing.md"
+        self.assertTrue(route_path.is_file())
+        route = route_path.read_text(encoding="utf-8")
+        combined = skill + route
+        for required in (
+            "Codex remains the default",
+            "explicitly asks",
+            "`Grok`, `그록`, or `xAI`",
+            "`xai-oauth`",
+            "native xAI `image_generate`",
+            "An `XAI_API_KEY` by itself does not enable",
+            "`grok_route: disabled`",
+            "Never fall back",
+            "exactly N independent jobs",
+            "starts at 3 active jobs",
+            "at most 5",
+            "remaining jobs stay queued",
+            "Retry only failed jobs",
+        ):
+            self.assertIn(required, combined)
+        for forbidden_transport in (
+            "`hermes chat` subprocesses",
+            "start `progrok`",
+            "reuse browser cookies",
+            "call a private endpoint",
+        ):
+            self.assertIn(forbidden_transport, route)
+        self.assertIn("Bare image and exact-count requests stay on Codex", combined)
+        self.assertIn("API-key-only does not enable this route", route)
+
     def test_production_batch_contract_is_explicit(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         execution = (SKILL_ROOT / "references" / "execution-contract.md").read_text(encoding="utf-8")

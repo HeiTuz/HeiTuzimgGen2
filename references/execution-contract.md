@@ -5,7 +5,7 @@
 The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `image_generation` tool. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
 `HeiTuzMPW` owns image-prompt compilation when installed. HeiTuzimgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
 
-No part of this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Authentication failures are terminal and must be reported without raw subprocess output.
+No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. The sole API-key exception is post-generation QC through `gemini_image_qc.py`, which reads an already configured `GOOGLE_API_KEY`/`GEMINI_API_KEY`, sends it only in the `x-goog-api-key` header, and never persists or reports it. Authentication failures are terminal and must be reported without raw subprocess output.
 
 ## Model-label honesty
 
@@ -25,7 +25,7 @@ Dry-run is always allowed and is the default.
 
 **Production batch:** first dry-run `codex_subscription_batch.py` and present `manifest_sha256`, reference evidence, `approval_sha256`, job count, pilot, outputs, and worker bounds. Fresh approval applies only to that immutable manifest+configuration scope. Live execution requires `--execute` and `HERMES_IMAGE_BATCH_APPROVAL_SHA256=<approval_sha256>`. The runner then sets the single-call marker only inside that approved bounded pass. Any manifest, reference-byte, or worker-config change invalidates approval. An operational or QC retry is a new manifest and needs a new dry-run and approval.
 
-Do not persist either marker in shell profiles, config, `.env`, or scripts. A failure does not authorize a provider/model fallback or an unbounded automatic retry. Vision inspection and Telegram delivery remain separately approved external actions.
+Do not persist either marker in shell profiles, config, `.env`, or scripts. A generation failure does not authorize a provider/model fallback or an unbounded automatic retry. The sole review exception is `gemini_image_qc.py`: after an approved Gemini primary timeout, HTTP 429, or HTTP 5xx it may make exactly one `gpt-5.6-luna` Codex-subscription QC retry; hard 4xx and malformed responses fail closed. Vision inspection and Telegram delivery remain separately approved external actions.
 
 ## Production batch ownership
 

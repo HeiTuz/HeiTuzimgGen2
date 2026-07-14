@@ -87,6 +87,18 @@ heituz update --dry-run
 npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2 -- --target "$HOME/.hermes/skills/HeiTuzImgGen2" --skip-mpw --skip-codex
 ```
 
+## Grok은 명시했을 때만
+
+기본 이미지 생성은 계속 Codex 구독 경로를 사용합니다. Grok은 Hermes에 **xAI OAuth가 연결되어 있고**, 요청에 `Grok`, `그록`, 또는 `xAI로 생성`이 명시된 경우에만 선택됩니다.
+
+```text
+Grok으로 이 콘셉트 이미지를 20장 만들어줘.
+```
+
+20장은 한꺼번에 폭격하지 않습니다. 먼저 1장으로 생성·품질을 확인한 뒤 3개 작업으로 시작해 최대 5개까지 제한적으로 처리하고, 나머지는 큐에 남깁니다. 실패한 장만 다시 생성합니다.
+
+OAuth가 없거나 현재 Hermes 세션에 xAI 이미지 도구가 없으면 Grok 경로는 비활성으로 끝납니다. API 키만으로 대신 실행하거나, Codex·Higgsfield로 조용히 바꾸지 않습니다. 자세한 계약은 [`references/grok-oauth-explicit-routing.md`](references/grok-oauth-explicit-routing.md)에 있습니다.
+
 ## 이렇게 시작하세요
 
 ```text

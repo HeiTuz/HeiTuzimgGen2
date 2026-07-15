@@ -224,7 +224,16 @@ try {
   const degraded = spawnSync(process.execPath, [path.join(appData, "HeiTuz", "heituz.mjs"), "status"], {
     cwd: root,
     encoding: "utf8",
-    env: { ...process.env, HOME: temp, USERPROFILE: temp, HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: localAppData, APPDATA: appData },
+    env: {
+      ...process.env,
+      HOME: temp,
+      USERPROFILE: temp,
+      HEITUZ_TEST_PLATFORM: "win32",
+      LOCALAPPDATA: localAppData,
+      APPDATA: appData,
+      TEMP: path.join(temp, "declared-windows-temp"),
+      TMP: path.join(temp, "declared-windows-temp"),
+    },
   });
   assert.notEqual(degraded.status, 0);
   assert.equal(JSON.parse(degraded.stdout).healthy, false);

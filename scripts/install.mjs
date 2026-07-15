@@ -461,13 +461,15 @@ export async function main(argv = args) {
   }
 
   prepareInstallPlans(plans, options.force, loc);
-  helper.assertPersistentTargets({
-    installations: plans.map((plan) => ({
-      agent_host: plan.host,
-      imggen2_target: plan.destination,
-      mpw_target: plan.mpwTarget,
-    })),
-  }, { windows: loc.windows });
+  if (register) {
+    helper.assertPersistentTargets({
+      installations: plans.map((plan) => ({
+        agent_host: plan.host,
+        imggen2_target: plan.destination,
+        mpw_target: plan.mpwTarget,
+      })),
+    }, { windows: loc.windows });
+  }
   const visionQcConfigs = installPlansTransaction(plans, visionQc);
 
   if (!options.skipCodex && !helper.codexExists(loc.windows)) {

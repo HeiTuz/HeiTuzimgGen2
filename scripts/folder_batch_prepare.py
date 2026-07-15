@@ -392,7 +392,20 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _utf8_stdout() -> None:
+    # Machine-readable JSON output must stay UTF-8 even when a Windows
+    # console/pipe defaults to a legacy code page that cannot encode
+    # non-ASCII source names such as d1_원단.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_stdout()
     args = parser().parse_args(argv)
     try:
         if args.candidate_attempts < 1:

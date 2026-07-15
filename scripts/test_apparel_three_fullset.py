@@ -42,7 +42,7 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def contract(self, colors=("navy", "ivory", "red", "black")):
+    def contract(self, colors=("navy", "ivory", "red", "black"), selection_mode=None):
         role_map = [
             {"file": "front-a.png", "role": "color_front", "color_identity": colors[0]},
             {"file": "back-a.png", "role": "main_back", "color_identity": colors[0]},
@@ -61,12 +61,13 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             "heituzmpw_folder_master": "same immutable folder master",
             "qc_contract": "source fidelity, support removal, pure white, no invention, family similarity",
             "outputs": self.outputs,
+            **({"selection_mode": selection_mode} if selection_mode is not None else {}),
         }
 
-    def prepare(self, colors=("navy", "ivory", "red", "black")):
-        contract = self.contract(colors)
-        contract["folder_id"] = f"sku-{len(colors)}"
-        contract_path = self.root / f"contract-{len(colors)}.json"
+    def prepare(self, colors=("navy", "ivory", "red", "black"), selection_mode=None, folder_id=None):
+        contract = self.contract(colors, selection_mode=selection_mode)
+        contract["folder_id"] = folder_id or f"sku-{len(colors)}"
+        contract_path = self.root / f"contract-{contract['folder_id']}.json"
         contract_path.write_text(json.dumps(contract), encoding="utf-8")
         return fullset.prepare_folder(contract_path, self.run_root)
 
@@ -98,11 +99,16 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             }
             (folder_root / set_name / "task-ledger.json").write_text(json.dumps(ledger), encoding="utf-8")
 
-    def report(self, coordinator, preferred=None, similarity=0.90, omit_assessments=None):
+    def report(self, coordinator, preferred=None, similarity=0.90, omit_assessments=None,
+               pair_overrides=None, omit_pairs=None, selection_mode=None):
         preferred = preferred or {}
         omit_assessments = omit_assessments or set()
+        pair_overrides = pair_overrides or {}
+        omit_pairs = omit_pairs or set()
         sets = coordinator["candidate_sets"]
         report = {"shared_contract_sha256": coordinator["shared_contract_sha256"], "outputs": {}, "similarities": []}
+        if selection_mode is not None:
+            report["selection_mode"] = selection_mode
         for output in self.outputs:
             candidates = {}
             for set_name in sets:
@@ -119,10 +125,13 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             for second in self.outputs[i + 1:]:
                 for first_set in sets:
                     for second_set in sets:
+                        key = (first["id"], first_set, second["id"], second_set)
+                        if key in omit_pairs:
+                            continue
                         report["similarities"].append({
                             "a_output": first["id"], "a_set": first_set,
                             "b_output": second["id"], "b_set": second_set,
-                            "score": similarity,
+                            "score": pair_overrides.get(key, similarity),
                         })
         path = Path(coordinator["folder_root"]) / "vision-selector-report.json"
         path.write_text(json.dumps(report), encoding="utf-8")
@@ -204,27 +213,111 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
         with self.assertRaisesRegex(fullset.ContractError, "blocked"):
             fullset.build_schedule([oversize], 20)
 
-    def test_dynamic_cross_set_selection_gate_missing_resume_and_provenance(self):
+    def test_default_mixed_selection_picks_best_cut_per_output_across_sets(self):
         coordinator = self.prepare()
         self.populate_candidates(coordinator)
-        preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-4"}
+        preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-3"}
         report = self.report(coordinator, preferred=preferred)
         coordinator_path = Path(coordinator["folder_root"]) / "coordinator.json"
         result = fullset.select_candidates(coordinator_path, report)
         selected = {row["output_id"]: row["source_candidate_set"] for row in result["files"]}
-        self.assertEqual(set(selected.values()), {"candidate-set-1"})
-        self.assertEqual(result["selection"], "whole-set")
+        self.assertEqual(selected, preferred)
+        self.assertEqual(result["selection"], "mixed")
+        self.assertEqual(result["selection_mode"], "mixed")
+        self.assertGreaterEqual(result["score"]["min_similarity"], 0.80)
         for row in result["files"]:
             self.assertEqual(len(row["rejected_alternatives"]), 2)
             self.assertIn("source_task", row)
             self.assertIn("source_path", row)
             self.assertIn("source_sha256", row)
+            self.assertEqual(row["source_fidelity"], 0.99)
+            for alternative in row["rejected_alternatives"]:
+                self.assertIn("source_fidelity", alternative)
+        for set_name in coordinator["candidate_sets"]:
+            self.assertFalse((Path(coordinator["folder_root"]) / set_name).exists())
         resumed = fullset.select_candidates(coordinator_path, report)
         self.assertTrue(resumed["resume_verified"])
+        with self.assertRaisesRegex(fullset.ContractError, "refusing overwrite"):
+            fullset.select_candidates(coordinator_path, report, selection_mode="whole-set")
         target = Path(coordinator["selected_root"]) / "front-a.png"
         target.write_bytes(b"tampered")
         with self.assertRaisesRegex(fullset.ContractError, "resume verification"):
             fullset.select_candidates(coordinator_path, report)
+
+    def test_explicit_whole_set_mode_keeps_one_coherent_set(self):
+        preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-3"}
+        for label, kwargs in (
+            ("contract", {"prepare": {"selection_mode": "whole-set"}}),
+            ("cli", {"select": {"selection_mode": "whole-set"}}),
+            ("report", {"report": {"selection_mode": "whole-set"}}),
+        ):
+            coordinator = self.prepare(folder_id=f"sku-whole-{label}", **kwargs.get("prepare", {}))
+            self.populate_candidates(coordinator)
+            report = self.report(coordinator, preferred=preferred, **kwargs.get("report", {}))
+            result = fullset.select_candidates(
+                Path(coordinator["folder_root"]) / "coordinator.json", report, **kwargs.get("select", {})
+            )
+            selected = {row["output_id"]: row["source_candidate_set"] for row in result["files"]}
+            self.assertEqual(set(selected.values()), {"candidate-set-1"}, label)
+            self.assertEqual(result["selection"], "whole-set", label)
+            self.assertEqual(result["selection_mode"], "whole-set", label)
+
+    def test_mixed_family_fails_closed_when_any_selected_pair_is_below_threshold(self):
+        coordinator = self.prepare()
+        self.populate_candidates(coordinator)
+        preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-3"}
+        bad_pair = {("front-a", "candidate-set-1", "front-b", "candidate-set-2"): 0.79}
+        report = self.report(coordinator, preferred=preferred, pair_overrides=bad_pair)
+        with self.assertRaisesRegex(fullset.ContractError, "80%"):
+            fullset.select_candidates(Path(coordinator["folder_root"]) / "coordinator.json", report)
+        self.assertFalse(Path(coordinator["selected_root"]).exists())
+        # The same report still passes for an explicit whole-set request because
+        # intra-set pairs stay above the gate.
+        whole = fullset.select_candidates(
+            Path(coordinator["folder_root"]) / "coordinator.json", report, selection_mode="whole-set"
+        )
+        self.assertEqual(whole["selection"], "whole-set")
+
+    def test_mixed_family_fails_closed_when_a_selected_pair_is_unscored(self):
+        coordinator = self.prepare()
+        self.populate_candidates(coordinator)
+        preferred = {"front-a": "candidate-set-1", "front-b": "candidate-set-2", "main-back": "candidate-set-3"}
+        missing = {
+            ("front-a", "candidate-set-1", "front-b", "candidate-set-2"),
+            ("front-b", "candidate-set-2", "front-a", "candidate-set-1"),
+        }
+        report = self.report(coordinator, preferred=preferred, omit_pairs=missing)
+        with self.assertRaisesRegex(fullset.ContractError, "missing family similarity"):
+            fullset.select_candidates(Path(coordinator["folder_root"]) / "coordinator.json", report)
+        self.assertFalse(Path(coordinator["selected_root"]).exists())
+
+    def test_mixed_fidelity_ties_resolve_deterministically_to_lowest_attempt(self):
+        selections = []
+        for run in ("first", "second"):
+            coordinator = self.prepare(folder_id=f"sku-tie-{run}")
+            self.populate_candidates(coordinator)
+            report = self.report(coordinator)  # every candidate has identical fidelity
+            result = fullset.select_candidates(Path(coordinator["folder_root"]) / "coordinator.json", report)
+            selections.append({row["output_id"]: row["source_candidate_set"] for row in result["files"]})
+        self.assertEqual(selections[0], selections[1])
+        self.assertEqual(set(selections[0].values()), {"candidate-set-1"})
+
+    def test_unknown_or_conflicting_selection_modes_fail_closed(self):
+        with self.assertRaisesRegex(fullset.ContractError, "unknown selection_mode"):
+            fullset.validate_folder_contract(self.contract(selection_mode="best-of"))
+        coordinator = self.prepare()
+        self.populate_candidates(coordinator)
+        coordinator_path = Path(coordinator["folder_root"]) / "coordinator.json"
+        report = self.report(coordinator)
+        with self.assertRaisesRegex(fullset.ContractError, "unknown --selection-mode"):
+            fullset.select_candidates(coordinator_path, report, selection_mode="banana")
+        bad_report = self.report(coordinator, selection_mode="per-cut")
+        with self.assertRaisesRegex(fullset.ContractError, "unknown report selection_mode"):
+            fullset.select_candidates(coordinator_path, bad_report)
+        conflicted = self.report(coordinator, selection_mode="whole-set")
+        with self.assertRaisesRegex(fullset.ContractError, "different selection modes"):
+            fullset.select_candidates(coordinator_path, conflicted, selection_mode="mixed")
+        self.assertFalse(Path(coordinator["selected_root"]).exists())
 
     def test_80_percent_gate_and_unowned_selected_directory_fail_closed(self):
         coordinator = self.prepare()

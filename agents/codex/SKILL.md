@@ -1,13 +1,13 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow. GPT/Codex host surface: the host and the generation transport coincide; the optional Grok route requires Hermes-native tooling and stays disabled on this host."
-version: 1.8.1
+version: 1.8.2
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   host_surface: codex
-  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.8.1"
+  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.8.2"
   tags: [image-generation, image-editing, chatgpt]
   category: creative
 ---
@@ -28,7 +28,7 @@ Generate or edit images through the official Codex CLI with an authenticated Cha
 - resumable JSONL batches with a sequential pilot, bounded fan-out, ledger ownership, selective retry, and independent QC reconciliation;
 - explicit-only Grok image generation through Hermes native `image_generate`, gated on `xai-oauth`, with exact-N queueing that starts at 3 active jobs and never exceeds 5;
 - risk-based post-generation QC through the host's default Vision tool in `auto` mode for reference/edit/product/promo work, with simple text-only generation skipping the visual loop;
-- optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by whole-set selection at a minimum 80% family-similarity gate.
+- optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by default mixed per-cut selection across attempts at a minimum 80% family-similarity gate; an explicit `selection_mode: whole-set` keeps one coherent candidate set.
 
 Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. Post-generation QC uses the host's currently configured default Vision model; ImgGen2 does not pin a separate reviewer model or provider. Never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use a supported file attachment; printing the path is not delivery evidence.
 Never fall back to a different generation provider or a pinned reviewer model when the configured route fails.
@@ -113,7 +113,7 @@ When QC is required, review the image against the requested brief, source fideli
 
 Vision role records may provide explicit `color_identity` values for `color_front` records. Ordinary product folders may instead omit the role map and use the public naming contract: `f1` front, `b1` back, `cN` alternate/color fronts, `dN` details, and `sN` composite-only sources. Colors and candidate attempts are independent: `candidate_attempt_count` defaults to three complete attempts whether the product has one color or many.
 
-Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Selection is whole-set only—cuts from different attempts are never mixed. Product originals remain outside the run root and are read-only. After verified selection, disposable `candidate-set-*` work directories are deleted automatically and only `selected/` plus minimal provenance remains; this cleanup requires no extra approval. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/cases/apparel-ghost-cut-folder-batch.md](references/cases/apparel-ghost-cut-folder-batch.md).
+Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Default selection is mixed: each output cut independently takes the highest-fidelity candidate across attempts that passes support removal, pure white/no shadow, and no invented detail, with fidelity ties resolving deterministically to the lowest attempt index; the final mixed family must still have every pairwise similarity scored and at or above the 80% gate or selection fails closed. An explicit `selection_mode: whole-set` (contract field, Vision-report field, or `--selection-mode whole-set`) keeps one coherent candidate set; unknown or conflicting modes fail closed. Product originals remain outside the run root and are read-only. After verified selection, disposable `candidate-set-*` work directories are deleted automatically and only `selected/` plus minimal provenance remains; this cleanup requires no extra approval. Provenance records the selection mode, the source task/set, hashes, fidelity, and rejected alternatives per cut. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/cases/apparel-ghost-cut-folder-batch.md](references/cases/apparel-ghost-cut-folder-batch.md).
 
 ## Verification
 
@@ -124,4 +124,4 @@ python -m unittest discover -s scripts -p 'test_*.py' -v
 python -m py_compile scripts/*.py
 ```
 
-The test suite covers output collision handling, dry-run safety, session provenance, batch resume/retry/QC behavior, explicit-only Grok OAuth routing, API-key-only rejection, exact-N queueing without shrinking, dynamic apparel task count, complete inventory, immutable source hashes, disjoint task paths, missing candidates, 80% selection, and delegation-cap packing.
+The test suite covers output collision handling, dry-run safety, session provenance, batch resume/retry/QC behavior, explicit-only Grok OAuth routing, API-key-only rejection, exact-N queueing without shrinking, dynamic apparel task count, complete inventory, immutable source hashes, disjoint task paths, missing candidates, mixed per-cut and explicit whole-set 80% selection with deterministic ties, and delegation-cap packing.

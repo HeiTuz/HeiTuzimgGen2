@@ -3,7 +3,9 @@
 
 This module is network-free.  It prepares immutable per-task contracts, builds a
 generic delegation schedule bounded by the live runtime limit, and materializes a
-Vision-scored cross-set selection without overwriting prior artifacts.
+Vision-scored selection without overwriting prior artifacts.  Default selection
+is mixed: every output cut independently takes the best gate-passing candidate
+across attempts; an explicit ``selection_mode: whole-set`` keeps one coherent set.
 """
 from __future__ import annotations
 
@@ -23,10 +25,20 @@ SCHEMA_VERSION = 1
 MIN_FAMILY_SIMILARITY = 0.80
 DEFAULT_CANDIDATE_ATTEMPTS = 3
 SOURCE_IMAGE_SUFFIXES = {".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"}
+DEFAULT_SELECTION_MODE = "mixed"
+SELECTION_MODES = (DEFAULT_SELECTION_MODE, "whole-set")
 
 
 class ContractError(RuntimeError):
     pass
+
+
+def normalize_selection_mode(value: Any, field: str = "selection_mode") -> str:
+    if value is None:
+        return DEFAULT_SELECTION_MODE
+    if not isinstance(value, str) or value not in SELECTION_MODES:
+        raise ContractError(f"blocked: unknown {field} {value!r}; supported modes: {', '.join(SELECTION_MODES)}")
+    return value
 
 
 def _normalize_color_identity(value: Any) -> str:
@@ -221,6 +233,7 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
     qc_contract = str(raw.get("qc_contract", "")).strip()
     if not folder_master or not qc_contract:
         raise ContractError("HeiTuzMPW folder master and QC contract are required")
+    selection_mode = normalize_selection_mode(raw.get("selection_mode"))
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -231,11 +244,13 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
         "color_identities": color_identities,
         "candidate_attempt_count": attempts,
         "task_count": attempts,
+        "selection_mode": selection_mode,
         "heituzmpw_folder_master": folder_master,
         "qc_contract": qc_contract,
         "outputs": outputs,
         "transport": "standard-imggen2-backend",
         "selection_policy": {
+            "selection_mode": selection_mode,
             "min_family_similarity": MIN_FAMILY_SIMILARITY,
             "priority": [
                 "source_fidelity",
@@ -463,13 +478,18 @@ def _similarity_map(report: dict[str, Any]) -> dict[tuple[str, str, str, str], f
     return result
 
 
-def _resume_selected(selected_root: Path, outputs: list[dict[str, str]]) -> dict[str, Any] | None:
+def _resume_selected(selected_root: Path, outputs: list[dict[str, str]], selection_mode: str) -> dict[str, Any] | None:
     provenance_path = selected_root / "provenance.json"
     if not selected_root.exists():
         return None
     if not provenance_path.is_file():
         raise ContractError("selected/ exists without provenance; refusing overwrite")
     provenance = read_json(provenance_path)
+    recorded_mode = provenance.get("selection")
+    if recorded_mode != selection_mode:
+        raise ContractError(
+            f"selected/ exists with selection mode {recorded_mode!r} but {selection_mode!r} was requested; refusing overwrite"
+        )
     by_id = {r["output_id"]: r for r in provenance.get("files", [])}
     for output in outputs:
         target = selected_root / output["filename"]
@@ -534,32 +554,100 @@ def _verified_candidate_outputs(
     return verified
 
 
-def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, Any]:
-    coordinator = read_json(coordinator_path)
-    folder_root = Path(coordinator["folder_root"])
-    shared = read_json(folder_root / "shared-folder-contract.json")
-    candidate_sets = _coordinator_candidate_sets(coordinator, shared)
-    outputs = shared["outputs"]
-    selected_root = folder_root / "selected"
-    resumed = _resume_selected(selected_root, outputs)
-    if resumed is not None:
-        return resumed
-    verified_candidates = _verified_candidate_outputs(folder_root, coordinator, shared, candidate_sets)
+def _effective_selection_mode(shared: dict[str, Any], report: dict[str, Any], cli_mode: str | None) -> str:
+    contract_mode = normalize_selection_mode(shared.get("selection_mode"))
+    explicit: list[str] = []
+    if cli_mode is not None:
+        explicit.append(normalize_selection_mode(cli_mode, "--selection-mode"))
+    if report.get("selection_mode") is not None:
+        explicit.append(normalize_selection_mode(report.get("selection_mode"), "report selection_mode"))
+    if len(set(explicit)) > 1:
+        raise ContractError("blocked: --selection-mode and the Vision report request different selection modes")
+    return explicit[0] if explicit else contract_mode
 
-    report = read_json(report_path)
-    if report.get("shared_contract_sha256") != coordinator["shared_contract_sha256"]:
-        raise ContractError("Vision report is not bound to this shared folder contract")
-    assessments = report.get("outputs")
-    if not isinstance(assessments, dict):
-        raise ContractError("Vision report outputs map is required")
-    similarities = _similarity_map(report)
 
-    # Select one complete candidate set; never mix cuts across attempts.
-    best: tuple[tuple[float, float, float], tuple[dict[str, Any], ...]] | None = None
+def _verified_entry(
+    verified_candidates: dict[str, dict[str, dict[str, Any]]],
+    set_name: str,
+    output: dict[str, str],
+    entry: dict[str, Any],
+    fidelity: float,
+) -> dict[str, Any]:
+    candidate = verified_candidates[set_name][output["id"]]
+    return {
+        "set": set_name,
+        "path": candidate["path"],
+        "sha256": candidate["sha256"],
+        "size": candidate["size"],
+        "assessment": entry,
+        "fidelity": fidelity,
+    }
+
+
+def _family_score(
+    outputs: list[dict[str, str]],
+    combo: list[dict[str, Any]],
+    similarities: dict[tuple[str, str, str, str], float],
+) -> tuple[float, float, float]:
+    """Score a chosen family; fail closed on a missing pair or a sub-threshold pair."""
+    pair_scores: list[float] = []
+    for i, j in itertools.combinations(range(len(outputs)), 2):
+        key = (outputs[i]["id"], combo[i]["set"], outputs[j]["id"], combo[j]["set"])
+        if key not in similarities:
+            raise ContractError(
+                f"blocked: missing family similarity for pair {outputs[i]['id']}@{combo[i]['set']} and "
+                f"{outputs[j]['id']}@{combo[j]['set']}; every selected pair must be scored"
+            )
+        pair_scores.append(similarities[key])
+    min_similarity = min(pair_scores, default=1.0)
+    if min_similarity < MIN_FAMILY_SIMILARITY:
+        raise ContractError("selected family does not pass the 80% family-similarity gate")
+    fidelity_sum = sum(c["fidelity"] for c in combo)
+    average_similarity = sum(pair_scores) / len(pair_scores) if pair_scores else 1.0
+    return (fidelity_sum, min_similarity, average_similarity)
+
+
+def _choose_mixed(
+    outputs: list[dict[str, str]],
+    candidate_sets: tuple[str, ...],
+    verified_candidates: dict[str, dict[str, dict[str, Any]]],
+    assessments: dict[str, Any],
+    similarities: dict[tuple[str, str, str, str], float],
+) -> tuple[tuple[float, float, float], list[dict[str, Any]]]:
+    # Default mixed selection: every output cut independently takes the
+    # highest-fidelity gate-passing candidate across attempts; fidelity ties
+    # resolve deterministically to the lowest attempt index.
+    combo: list[dict[str, Any]] = []
+    for output in outputs:
+        per_output = assessments.get(output["id"], {}).get("candidates", {})
+        chosen: dict[str, Any] | None = None
+        for set_name in candidate_sets:
+            entry = per_output.get(set_name)
+            if not isinstance(entry, dict):
+                continue
+            fidelity, gates = _candidate_quality(entry)
+            if not gates:
+                continue
+            if chosen is None or fidelity > chosen["fidelity"]:
+                chosen = _verified_entry(verified_candidates, set_name, output, entry, fidelity)
+        if chosen is None:
+            raise ContractError(f"blocked: no gate-passing candidate for output {output['id']} in any candidate set")
+        combo.append(chosen)
+    return _family_score(outputs, combo, similarities), combo
+
+
+def _choose_whole_set(
+    outputs: list[dict[str, str]],
+    candidate_sets: tuple[str, ...],
+    verified_candidates: dict[str, dict[str, dict[str, Any]]],
+    assessments: dict[str, Any],
+    similarities: dict[tuple[str, str, str, str], float],
+) -> tuple[tuple[float, float, float], list[dict[str, Any]]]:
+    # Explicit whole-set request: keep one complete candidate set.
+    best: tuple[tuple[float, float, float], list[dict[str, Any]]] | None = None
     for set_name in candidate_sets:
         combo: list[dict[str, Any]] = []
         for output in outputs:
-            candidate = verified_candidates[set_name][output["id"]]
             entry = assessments.get(output["id"], {}).get("candidates", {}).get(set_name)
             if not isinstance(entry, dict):
                 combo = []
@@ -568,32 +656,47 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             if not gates:
                 combo = []
                 break
-            combo.append({"set": set_name, "path": candidate["path"], "sha256": candidate["sha256"], "size": candidate["size"], "assessment": entry, "fidelity": fidelity})
+            combo.append(_verified_entry(verified_candidates, set_name, output, entry, fidelity))
         if len(combo) != len(outputs):
             continue
-        pair_scores: list[float] = []
-        complete = True
-        for i, j in itertools.combinations(range(len(outputs)), 2):
-            key = (outputs[i]["id"], set_name, outputs[j]["id"], set_name)
-            if key not in similarities:
-                complete = False
-                break
-            pair_scores.append(similarities[key])
-        if not complete:
+        try:
+            score0 = _family_score(outputs, combo, similarities)
+        except ContractError:
             continue
-        min_similarity = min(pair_scores, default=1.0)
-        if min_similarity < MIN_FAMILY_SIMILARITY:
-            continue
-        fidelity_sum = sum(c["fidelity"] for c in combo)
-        average_similarity = sum(pair_scores) / len(pair_scores) if pair_scores else 1.0
-        score0 = (fidelity_sum, min_similarity, average_similarity)
-        candidate_combo = tuple(combo)
         if best is None or score0 > best[0]:
-            best = (score0, candidate_combo)
+            best = (score0, combo)
     if best is None:
         raise ContractError("no complete whole candidate set passes the 80% family-similarity gate")
+    return best
 
-    score, combo = best
+
+def select_candidates(
+    coordinator_path: Path,
+    report_path: Path,
+    selection_mode: str | None = None,
+) -> dict[str, Any]:
+    coordinator = read_json(coordinator_path)
+    folder_root = Path(coordinator["folder_root"])
+    shared = read_json(folder_root / "shared-folder-contract.json")
+    candidate_sets = _coordinator_candidate_sets(coordinator, shared)
+    outputs = shared["outputs"]
+    report = read_json(report_path)
+    effective_mode = _effective_selection_mode(shared, report, selection_mode)
+    selected_root = folder_root / "selected"
+    resumed = _resume_selected(selected_root, outputs, effective_mode)
+    if resumed is not None:
+        return resumed
+    verified_candidates = _verified_candidate_outputs(folder_root, coordinator, shared, candidate_sets)
+
+    if report.get("shared_contract_sha256") != coordinator["shared_contract_sha256"]:
+        raise ContractError("Vision report is not bound to this shared folder contract")
+    assessments = report.get("outputs")
+    if not isinstance(assessments, dict):
+        raise ContractError("Vision report outputs map is required")
+    similarities = _similarity_map(report)
+
+    chooser = _choose_whole_set if effective_mode == "whole-set" else _choose_mixed
+    score, combo = chooser(outputs, candidate_sets, verified_candidates, assessments, similarities)
     stage = Path(tempfile.mkdtemp(prefix=".selected-stage-", dir=folder_root))
     files = []
     try:
@@ -616,6 +719,7 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
                     "candidate_set": set_name,
                     "available": available,
                     "vision_verdict": alternative.get("vision_verdict", "") if isinstance(alternative, dict) else "",
+                    "source_fidelity": alternative.get("source_fidelity") if isinstance(alternative, dict) else None,
                 })
             task_number = chosen["set"].rsplit("-", 1)[-1]
             files.append({
@@ -636,7 +740,8 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             "shared_contract_sha256": coordinator["shared_contract_sha256"],
             "vision_report": str(report_path.resolve()),
             "vision_report_sha256": sha256_file(report_path),
-            "selection": "whole-set",
+            "selection": effective_mode,
+            "selection_mode": effective_mode,
             "min_family_similarity_gate": MIN_FAMILY_SIMILARITY,
             "score": {"fidelity_sum": score[0], "min_similarity": score[1], "average_similarity": score[2]},
             "files": files,
@@ -648,7 +753,7 @@ def select_candidates(coordinator_path: Path, report_path: Path) -> dict[str, An
             raise ContractError("selected/ appeared during selection; refusing overwrite") from exc
         # candidate-set-* directories are disposable workspace owned by this
         # run. Originals live outside folder_root and were already proven
-        # non-overlapping during prepare, so retain only the selected whole set.
+        # non-overlapping during prepare, so retain only the selected family.
         for set_name in candidate_sets:
             candidate_root = folder_root / set_name
             if candidate_root.exists():
@@ -669,13 +774,14 @@ def main() -> int:
     choose = sub.add_parser("select")
     choose.add_argument("--coordinator", type=Path, required=True)
     choose.add_argument("--vision-report", type=Path, required=True)
+    choose.add_argument("--selection-mode", choices=list(SELECTION_MODES), default=None)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
             coordinators = [prepare_folder(p.resolve(), args.run_root) for p in args.contract]
             result = {"runtime_limit": args.runtime_limit, "coordinators": coordinators, "waves": build_schedule(coordinators, args.runtime_limit)}
         else:
-            result = select_candidates(args.coordinator.resolve(), args.vision_report.resolve())
+            result = select_candidates(args.coordinator.resolve(), args.vision_report.resolve(), args.selection_mode)
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     except ContractError as exc:

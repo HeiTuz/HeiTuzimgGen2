@@ -30,7 +30,7 @@ Silhouette correction and white-background extension happen in one generation. U
 
 Read the live delegation ceiling and pass it as `--runtime-limit`. Pack whole folders without splitting or reducing attempts. Generation keeps the sequential pilot, independent QC, bounded fan-out, and failed-item retry path.
 
-Vision scores complete sets. The selector is whole-set only and never mixes cuts between attempts. The chosen family must clear the 80% similarity gate. `selected/` is written by staging plus atomic rename and contains only final files plus provenance.
+Vision scores every candidate cut and every cross-attempt pair. The default selector is mixed: each output cut independently takes the highest-fidelity candidate that passes support removal, pure white/no shadow, and no invented detail, with ties resolving to the lowest attempt index. Every pairwise similarity among the chosen cuts must be scored and clear the 80% gate or selection fails closed. An explicit `selection_mode: whole-set` keeps one coherent candidate set; unknown modes fail closed. Provenance records the selection mode, per-cut source set, hashes, fidelity, and rejected alternatives. `selected/` is written by staging plus atomic rename and contains only final files plus provenance.
 
 ## Recovery
 

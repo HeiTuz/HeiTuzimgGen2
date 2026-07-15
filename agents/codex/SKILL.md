@@ -1,13 +1,13 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow. GPT/Codex host surface: the host and the generation transport coincide; the optional Grok route requires Hermes-native tooling and stays disabled on this host."
-version: 1.8.2
+version: 1.9.0
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   host_surface: codex
-  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.8.2"
+  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.9.0"
   tags: [image-generation, image-editing, chatgpt]
   category: creative
 ---
@@ -114,6 +114,8 @@ When QC is required, review the image against the requested brief, source fideli
 Vision role records may provide explicit `color_identity` values for `color_front` records. Ordinary product folders may instead omit the role map and use the public naming contract: `f1` front, `b1` back, `cN` alternate/color fronts, `dN` details, and `sN` composite-only sources. Colors and candidate attempts are independent: `candidate_attempt_count` defaults to three complete attempts whether the product has one color or many.
 
 Do not infer visual color names from filenames; auto-mapped `cN` values are stable opaque identities. Back/detail evidence does not add attempts. Every candidate task receives the complete source and output inventory. Default selection is mixed: each output cut independently takes the highest-fidelity candidate across attempts that passes support removal, pure white/no shadow, and no invented detail, with fidelity ties resolving deterministically to the lowest attempt index; the final mixed family must still have every pairwise similarity scored and at or above the 80% gate or selection fails closed. An explicit `selection_mode: whole-set` (contract field, Vision-report field, or `--selection-mode whole-set`) keeps one coherent candidate set; unknown or conflicting modes fail closed. Product originals remain outside the run root and are read-only. After verified selection, disposable `candidate-set-*` work directories are deleted automatically and only `selected/` plus minimal provenance remains; this cleanup requires no extra approval. Provenance records the selection mode, the source task/set, hashes, fidelity, and rejected alternatives per cut. Use the observed delegation ceiling as `--runtime-limit`; any over-cap folder is blocked rather than reduced. See [references/cases/apparel-ghost-cut-folder-batch.md](references/cases/apparel-ghost-cut-folder-batch.md).
+
+A folder-path-only request (local or Windows/UNC shared folder) uses the packaged entry point `scripts/folder_batch_prepare.py`. It inventories top-level source images (ignoring ordinary artifacts such as `Thumbs.db` and `desktop.ini`, and excluding `AI_RESULT_*` result subfolders from source inventory), applies the public naming contract including `fN`/`bN` numbered variants and `dN` detail names with descriptors such as `d1_원단`, and fails closed on unknown or conflicting names, symlink/junction/reparse entries, and hidden image files. It writes the validated folder contract, Vision handoff, default apparel-correction prompts/QC contract, and output plan into a private work root outside the source folder and plans a deterministic non-overwriting `AI_RESULT_<timestamp>` result subfolder; `--dry-run` plans without materializing runner task specs, and `--publish-from` publishes a verified `selected/` family into the result subfolder with per-file hash re-verification, staged atomic rename, and a machine-readable `batch-summary.json`. Originals stay byte-identical. See [examples/dint-shared-folder-apparel-batch.md](examples/dint-shared-folder-apparel-batch.md).
 
 ## Verification
 

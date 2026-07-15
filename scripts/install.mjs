@@ -3,14 +3,24 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import {
+  AGENT_HOST_PRIORITY,
+  detectAgentHosts,
+  deterministicAgentHosts,
+  formatDetectedHosts,
+  normalizeAgentHost,
+  parseInteractiveAgentHosts,
+} from "./agent_targets.mjs";
 
 
 const source = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
-const args = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === "--"));
-const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "contracts", "examples", "references", "scripts"]);
+const args = process.argv.slice(2);
+export const ALLOWED_ROOTS = new Set(["SKILL.md", "README.md", "LICENSE", "package.json", "agents", "contracts", "examples", "references", "scripts"]);
 const VISION_QC_MODES = new Set(["auto", "off"]);
+const AGENT_TARGETS = new Set(["auto", "all", ...AGENT_HOST_PRIORITY, "gpt"]);
 
 export function normalizeInstallerPath(value, platform = process.platform, cwd = process.cwd()) {
   if (typeof value !== "string" || !value || value.includes("\0")) throw new Error("Install path must be a non-empty path without NUL bytes.");
@@ -54,8 +64,9 @@ Usage:
   bunx github:HeiTuz/HeiTuzImgGen2 -- [options]
 
 Options:
-  --target <directory>   ImgGen2 installation directory (default: ~/.hermes/skills/HeiTuzImgGen2)
-  --mpw-target <dir>     HeiTuzMPW installation directory
+  --agent <host>         Agent host: auto (default), all, hermes, claude, or codex
+  --target <directory>   Explicit ImgGen2 installation directory
+  --mpw-target <dir>     Explicit HeiTuzMPW installation directory
   --force                Replace an existing ImgGen2 destination
   --skip-codex           Do not install/update the official Codex CLI
   --skip-mpw             Do not install/update HeiTuzMPW
@@ -71,11 +82,12 @@ After install: heituz update [--dry-run] [--codex]
   process.exit(code);
 }
 
-function parse(argv) {
-  const options = { target: null, mpwTarget: null, force: false, skipCodex: false, skipMpw: false, dryRun: false, offline: false, register: null, visionQc: null, visionQcExplicit: false };
+export function parse(argv) {
+  const options = { agent: "auto", agentExplicit: false, target: null, mpwTarget: null, force: false, skipCodex: false, skipMpw: false, dryRun: false, offline: false, register: null, visionQc: null, visionQcExplicit: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") usage(0);
+    if (arg === "--") continue;
     if (arg === "--force") { options.force = true; continue; }
     if (arg === "--skip-codex") { options.skipCodex = true; continue; }
     if (arg === "--skip-mpw") { options.skipMpw = true; continue; }
@@ -83,16 +95,24 @@ function parse(argv) {
     if (arg === "--offline") { options.offline = true; continue; }
     if (arg === "--register") { options.register = true; continue; }
     if (arg === "--no-register") { options.register = false; continue; }
-    if (arg === "--target" || arg === "--mpw-target" || arg === "--vision-qc") {
+    if (arg === "--agent" || arg === "--target" || arg === "--mpw-target" || arg === "--vision-qc") {
       const value = argv[++i];
       if (!value) usage(2);
       if (arg === "--vision-qc") {
         if (!VISION_QC_MODES.has(value)) usage(2);
         options.visionQc = value;
         options.visionQcExplicit = true;
+      } else if (arg === "--agent") {
+        options.agent = value.toLowerCase();
+        options.agentExplicit = true;
       } else {
         options[arg === "--target" ? "target" : "mpwTarget"] = value;
       }
+      continue;
+    }
+    if (arg.startsWith("--agent=")) {
+      options.agent = arg.slice("--agent=".length).toLowerCase();
+      options.agentExplicit = true;
       continue;
     }
     if (arg.startsWith("--target=")) { options.target = arg.slice("--target=".length); continue; }
@@ -106,32 +126,104 @@ function parse(argv) {
     }
     usage(2);
   }
+  if (!AGENT_TARGETS.has(options.agent)) usage(2);
   if (options.offline) { options.skipCodex = true; options.skipMpw = true; }
   return options;
 }
 
-function shouldCopy(rel) {
+const EXCLUDED_PARTS = new Set([".git", ".gjc", ".omx", "node_modules", "docs-internal", "__pycache__"]);
+
+export function shouldCopy(rel, { includeAgents = false } = {}) {
   const parts = rel.split(/[/\\]/u);
   if (!ALLOWED_ROOTS.has(parts[0])) return false;
-  return !parts.some((part) => [".git", ".gjc", ".omx", "node_modules", "docs-internal", "__pycache__"].includes(part)) &&
+  if (!includeAgents && parts[0] === "agents") return false;
+  return !parts.some((part) => EXCLUDED_PARTS.has(part)) &&
     !path.basename(rel).startsWith(".") && !rel.endsWith(".pyc") && !rel.endsWith(".bak");
 }
 
-function copyTree(current, destination) {
+function copyTree(current, destination, sourceRoot) {
   for (const entry of fs.readdirSync(current)) {
     const from = path.join(current, entry);
-    const rel = path.relative(source, from);
+    const rel = path.relative(sourceRoot, from);
     if (!shouldCopy(rel)) continue;
     const to = path.join(destination, rel);
     const stat = fs.lstatSync(from);
     if (stat.isDirectory()) {
       fs.mkdirSync(to, { recursive: true });
-      copyTree(from, destination);
+      copyTree(from, destination, sourceRoot);
     } else if (stat.isFile()) {
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
       fs.chmodSync(to, stat.mode & 0o777);
     }
+  }
+}
+
+function overlayEntryIsSafe(relative) {
+  const parts = relative.split(/[/\\]/u);
+  return !parts.some((part) => EXCLUDED_PARTS.has(part)) &&
+    !path.basename(relative).startsWith(".") &&
+    !relative.endsWith(".pyc") &&
+    !relative.endsWith(".bak");
+}
+
+function copyOverlayTree(current, destination, overlayRoot) {
+  for (const entry of fs.readdirSync(current)) {
+    const from = path.join(current, entry);
+    const rel = path.relative(overlayRoot, from);
+    if (!overlayEntryIsSafe(rel)) continue;
+    const to = path.join(destination, rel);
+    const stat = fs.lstatSync(from);
+    if (stat.isDirectory()) {
+      fs.mkdirSync(to, { recursive: true });
+      copyOverlayTree(from, destination, overlayRoot);
+    } else if (stat.isFile()) {
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+      fs.chmodSync(to, stat.mode & 0o777);
+    }
+  }
+}
+
+function validateHostOverlay(sourceRoot, host) {
+  const normalized = normalizeAgentHost(host);
+  const overlay = path.join(sourceRoot, "agents", normalized);
+  if (!fs.existsSync(overlay) || !fs.statSync(overlay).isDirectory()) {
+    throw new Error(`Install source is missing the ${normalized} agent overlay`);
+  }
+  if (normalized !== "hermes" && !fs.existsSync(path.join(overlay, "SKILL.md"))) {
+    throw new Error(`Install source is missing agents/${normalized}/SKILL.md`);
+  }
+  const allowed = new Set(["AGENTS.md", "README.md", "SKILL.md"]);
+  for (const entry of fs.readdirSync(overlay)) {
+    if (!allowed.has(entry)) throw new Error(`Unsupported ${normalized} overlay entry: ${entry}`);
+  }
+  return overlay;
+}
+
+function countSkillEntries(directory) {
+  let count = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const candidate = path.join(directory, entry.name);
+    if (entry.isDirectory()) count += countSkillEntries(candidate);
+    else if (entry.isFile() && entry.name === "SKILL.md") count += 1;
+  }
+  return count;
+}
+
+export function installPayload({ sourceRoot = source, destination, host = null }) {
+  fs.mkdirSync(destination, { recursive: true });
+  copyTree(sourceRoot, destination, sourceRoot);
+  const overlay = host ? validateHostOverlay(sourceRoot, host) : null;
+  if (overlay) copyOverlayTree(overlay, destination, overlay);
+  if (fs.existsSync(path.join(destination, "agents"))) {
+    throw new Error(`Install verification failed: agents/ must not appear in ${destination}`);
+  }
+  if (!fs.existsSync(path.join(destination, "SKILL.md"))) {
+    throw new Error(`Install verification failed: SKILL.md missing in ${destination}`);
+  }
+  if (countSkillEntries(destination) !== 1) {
+    throw new Error(`Install verification failed: expected exactly one SKILL.md in ${destination}`);
   }
 }
 
@@ -167,52 +259,249 @@ function configureVisionQc(destination, selection) {
 }
 
 
-async function main() {
-  const options = parse(args);
+export function hostInstallPlan(homeDir, host) {
+  const normalized = normalizeAgentHost(host);
+  if (!AGENT_HOST_PRIORITY.includes(normalized)) throw new Error(`Unsupported agent host: ${host}`);
+  if (normalized === "hermes") {
+    return {
+      host: normalized,
+      destination: path.resolve(path.join(homeDir, ".hermes", "skills", "HeiTuzImgGen2")),
+      mpwTarget: path.resolve(path.join(homeDir, ".hermes", "skills", "prompt-writing", "HeiTuzMPW")),
+    };
+  }
+  return {
+    host: normalized,
+    destination: path.resolve(path.join(homeDir, `.${normalized}`, "skills", "HeiTuzImgGen2")),
+    mpwTarget: path.resolve(path.join(homeDir, `.${normalized}`, "skills", "HeiTuzMPW")),
+  };
+}
+
+function inferHostFromDestinations(homeDir, destination, mpwTarget) {
+  for (const host of AGENT_HOST_PRIORITY) {
+    const known = hostInstallPlan(homeDir, host);
+    const imgMatches = path.normalize(destination) === path.normalize(known.destination);
+    const mpwMatches = path.normalize(mpwTarget) === path.normalize(known.mpwTarget);
+    if (imgMatches && mpwMatches) return host;
+  }
+  return null;
+}
+
+function inferHostFromProvidedDestinations(homeDir, destination, mpwTarget) {
+  const matches = [];
+  for (const host of AGENT_HOST_PRIORITY) {
+    const known = hostInstallPlan(homeDir, host);
+    if ((destination && path.normalize(destination) === path.normalize(known.destination)) ||
+        (mpwTarget && path.normalize(mpwTarget) === path.normalize(known.mpwTarget))) {
+      matches.push(host);
+    }
+  }
+  const unique = [...new Set(matches)];
+  if (unique.length > 1) throw new Error("Explicit ImgGen2 and MPW targets select different agent hosts");
+  return unique[0] || null;
+}
+
+async function chooseInteractiveHosts(detected) {
+  console.log(`Detected agent environments: ${formatDetectedHosts(detected)}`);
+  const recommended = deterministicAgentHosts("auto", detected)[0];
+  const prompt = `Install target(s) [${recommended}] (comma-separated ${AGENT_HOST_PRIORITY.join(", ")}; all = every detected): `;
+  const terminal = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return parseInteractiveAgentHosts(await terminal.question(prompt), detected);
+  } finally {
+    terminal.close();
+  }
+}
+
+async function resolveInstallPlans(options, homeDir) {
+  if (options.target || options.mpwTarget) {
+    const explicitHost = options.agentExplicit && !["auto", "all"].includes(options.agent)
+      ? normalizeAgentHost(options.agent)
+      : null;
+    const providedDestination = options.target ? normalizeInstallerPath(options.target) : null;
+    const providedMpwTarget = options.mpwTarget ? normalizeInstallerPath(options.mpwTarget) : null;
+    const inferredHost = inferHostFromProvidedDestinations(homeDir, providedDestination, providedMpwTarget);
+    if (explicitHost && inferredHost && explicitHost !== inferredHost) {
+      throw new Error("Explicit --agent conflicts with the supplied installation directory");
+    }
+    const host = explicitHost || inferredHost;
+    const defaults = hostInstallPlan(homeDir, host || "hermes");
+    const destination = providedDestination || defaults.destination;
+    const mpwTarget = providedMpwTarget || defaults.mpwTarget;
+    return [{ host: host || inferHostFromDestinations(homeDir, destination, mpwTarget), destination, mpwTarget }];
+  }
+  const detected = detectAgentHosts({ homeDir, existsSync: fs.existsSync });
+  const interactive = options.agent === "auto" && process.stdin.isTTY && process.stdout.isTTY && !process.env.CI;
+  const hosts = interactive
+    ? await chooseInteractiveHosts(detected)
+    : deterministicAgentHosts(options.agent, detected);
+  return hosts.map((host) => hostInstallPlan(homeDir, host));
+}
+
+function pathsOverlap(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return a === b || a.startsWith(b + path.sep) || b.startsWith(a + path.sep);
+}
+
+function validateDestination(destination, loc) {
+  const resolved = path.resolve(destination);
+  const filesystemRoot = path.parse(resolved).root;
+  const protectedContainers = [
+    ".hermes",
+    path.join(".hermes", "skills"),
+    ".claude",
+    path.join(".claude", "skills"),
+    ".codex",
+    path.join(".codex", "skills"),
+  ].map((relative) => path.resolve(loc.home, relative));
+  if (resolved === filesystemRoot || path.dirname(resolved) === filesystemRoot ||
+      resolved === path.resolve(loc.home) || protectedContainers.includes(resolved)) {
+    throw new Error(`Refusing unsafe install destination: ${resolved}`);
+  }
+  for (const protectedPath of [source, loc.config, loc.bin]) {
+    if (pathsOverlap(resolved, protectedPath)) throw new Error(`Refusing unsafe install destination: ${resolved}`);
+  }
+}
+
+function prepareInstallPlans(plans, force, loc) {
+  for (let index = 0; index < plans.length; index += 1) {
+    validateDestination(plans[index].destination, loc);
+    validateDestination(plans[index].mpwTarget, loc);
+    if (pathsOverlap(plans[index].destination, plans[index].mpwTarget)) {
+      throw new Error("ImgGen2 and MPW install destinations must not overlap");
+    }
+    for (let other = index + 1; other < plans.length; other += 1) {
+      if (pathsOverlap(plans[index].destination, plans[other].destination) ||
+          pathsOverlap(plans[index].mpwTarget, plans[other].mpwTarget)) {
+        throw new Error("Multi-host install destinations must not overlap");
+      }
+    }
+  }
+  for (const plan of plans) {
+    if (!fs.existsSync(plan.destination)) continue;
+    if (!force) throw new Error(`Refusing to overwrite existing installation: ${plan.destination}; rerun with --force.`);
+  }
+}
+
+export function installPlansTransaction(plans, visionQc, { sourceRoot = source } = {}) {
+  const staged = [];
+  try {
+    for (const plan of plans) {
+      const parent = path.dirname(plan.destination);
+      fs.mkdirSync(parent, { recursive: true });
+      const stageRoot = fs.mkdtempSync(path.join(parent, ".heituzimggen2-stage-"));
+      const payload = path.join(stageRoot, "payload");
+      staged.push({ ...plan, stageRoot, payload });
+      installPayload({ sourceRoot, destination: payload, host: plan.host });
+      configureVisionQc(payload, visionQc);
+    }
+    const applied = [];
+    try {
+      for (let index = 0; index < staged.length; index += 1) {
+        const item = staged[index];
+        const backup = `${item.destination}.heituzimggen2-backup-${process.pid}-${Date.now()}-${index}`;
+        const hadDestination = fs.existsSync(item.destination);
+        if (hadDestination) fs.renameSync(item.destination, backup);
+        try {
+          fs.renameSync(item.payload, item.destination);
+        } catch (error) {
+          if (hadDestination) fs.renameSync(backup, item.destination);
+          throw error;
+        }
+        applied.push({ destination: item.destination, backup: hadDestination ? backup : null });
+      }
+    } catch (error) {
+      for (const item of applied.reverse()) {
+        fs.rmSync(item.destination, { recursive: true, force: true });
+        if (item.backup && fs.existsSync(item.backup)) fs.renameSync(item.backup, item.destination);
+      }
+      throw error;
+    }
+    for (const item of applied) {
+      if (item.backup) fs.rmSync(item.backup, { recursive: true, force: true });
+    }
+  } finally {
+    for (const item of staged) fs.rmSync(item.stageRoot, { recursive: true, force: true });
+  }
+  return plans.map((plan) => path.join(plan.destination, "vision-qc.json"));
+}
+
+export async function main(argv = args) {
+  const options = parse(argv);
   process.env.HEITUZ_INSTALLER_IMPORT = "1";
   const helper = await import(pathToFileURL(path.join(source, "scripts", "heituz.mjs")).href);
   delete process.env.HEITUZ_INSTALLER_IMPORT;
   const loc = helper.locations();
   ensurePillow(loc, options);
-  const destination = options.target
-    ? normalizeInstallerPath(options.target)
-    : path.resolve(path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"));
-  const mpwTarget = options.mpwTarget
-    ? normalizeInstallerPath(options.mpwTarget)
-    : path.resolve(path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"));
+  const plans = await resolveInstallPlans(options, loc.home);
+  const primary = plans[0];
   const visionQc = await selectVisionQc(options);
+  const register = options.register ?? !options.offline;
 
   if (options.dryRun) {
-    console.log(JSON.stringify({ imggen2_target: destination, mpw_target: mpwTarget, codex: helper.codexInstallCommand(loc.windows), platform: loc.windows ? "windows" : "posix", register: options.register ?? !options.offline, vision_qc: { requested_mode: visionQc.requested, mode: visionQc.effective, config: path.join(destination, "vision-qc.json") } }, null, 2));
+    console.log(JSON.stringify({
+      agent_targets: plans.map((plan) => plan.host).filter(Boolean),
+      installs: plans.map((plan) => ({
+        agent: plan.host,
+        imggen2_target: plan.destination,
+        mpw_target: plan.mpwTarget,
+      })),
+      imggen2_target: primary.destination,
+      mpw_target: primary.mpwTarget,
+      codex: helper.codexInstallCommand(loc.windows),
+      platform: loc.windows ? "windows" : "posix",
+      register,
+      vision_qc: {
+        requested_mode: visionQc.requested,
+        mode: visionQc.effective,
+        config: path.join(primary.destination, "vision-qc.json"),
+      },
+    }, null, 2));
     return;
   }
-  if (fs.existsSync(destination)) {
-    if (!options.force) throw new Error(`Refusing to overwrite existing installation: ${destination}; rerun with --force.`);
-    fs.rmSync(destination, { recursive: true, force: true });
-  }
-  fs.mkdirSync(destination, { recursive: true });
-  copyTree(source, destination);
-  if (!fs.existsSync(path.join(destination, "SKILL.md"))) throw new Error(`Install verification failed: SKILL.md missing in ${destination}`);
+
+  prepareInstallPlans(plans, options.force, loc);
+  const visionQcConfigs = installPlansTransaction(plans, visionQc);
 
   if (!options.skipCodex && !helper.codexExists(loc.windows)) {
-    const plan = helper.codexInstallCommand(loc.windows);
-    run(plan.command, plan.args, { dryRun: false, label: "official Codex CLI install" });
+    const codexPlan = helper.codexInstallCommand(loc.windows);
+    run(codexPlan.command, codexPlan.args, { dryRun: false, label: "official Codex CLI install" });
   }
   if (!options.skipMpw) {
-    const invocation = helper.npxInvocation(loc.windows, ["--yes", "github:HeiTuz/HeiTuzMPW", "--", "--dest", mpwTarget, "--force", "--quiet"]);
-    run(invocation.command, invocation.args, { dryRun: false, label: "HeiTuzMPW install" });
+    for (const plan of plans) {
+      const mpwArgs = ["--yes", "github:HeiTuz/HeiTuzMPW", "--"];
+      if (plan.host) mpwArgs.push("--target", plan.host);
+      mpwArgs.push("--dest", plan.mpwTarget, "--force", "--quiet");
+      const invocation = helper.npxInvocation(loc.windows, mpwArgs);
+      run(invocation.command, invocation.args, { dryRun: false, label: `HeiTuzMPW install${plan.host ? ` (${plan.host})` : ""}` });
+    }
   }
 
-  const visionQcConfig = configureVisionQc(destination, visionQc);
-  const register = options.register ?? !options.offline;
   if (!register) {
-    console.log(`Installed HeiTuzImgGen2 to ${destination}`);
-    console.log("Global launcher and manifest were not registered (offline/test install); rerun with --register to make this the active installation.");
+    for (const plan of plans) console.log(`Installed HeiTuzImgGen2${plan.host ? ` (${plan.host})` : ""} to ${plan.destination}`);
+    console.log("Global launcher and manifest were not registered (offline/test install); rerun with --register to make the first target active.");
     return;
   }
+
   fs.mkdirSync(loc.config, { recursive: true });
-  fs.copyFileSync(path.join(destination, "scripts", "heituz.mjs"), path.join(loc.config, "heituz.mjs"));
-  fs.writeFileSync(loc.manifest, JSON.stringify({ version: 1, imggen2_target: destination, mpw_target: mpwTarget, imggen2_repo: "github:HeiTuz/HeiTuzImgGen2", mpw_repo: "github:HeiTuz/HeiTuzMPW", vision_qc_requested: visionQc.requested, vision_qc_mode: visionQc.effective, vision_qc_config: visionQcConfig }, null, 2) + "\n", { mode: 0o600 });
+  fs.copyFileSync(path.join(primary.destination, "scripts", "heituz.mjs"), path.join(loc.config, "heituz.mjs"));
+  fs.writeFileSync(loc.manifest, JSON.stringify({
+    version: 2,
+    agent_host: primary.host,
+    imggen2_target: primary.destination,
+    mpw_target: primary.mpwTarget,
+    imggen2_repo: "github:HeiTuz/HeiTuzImgGen2",
+    mpw_repo: "github:HeiTuz/HeiTuzMPW",
+    vision_qc_requested: visionQc.requested,
+    vision_qc_mode: visionQc.effective,
+    vision_qc_config: visionQcConfigs[0],
+    installations: plans.map((plan, index) => ({
+      agent_host: plan.host,
+      imggen2_target: plan.destination,
+      mpw_target: plan.mpwTarget,
+      vision_qc_config: visionQcConfigs[index],
+    })),
+  }, null, 2) + "\n", { mode: 0o600 });
   fs.mkdirSync(loc.bin, { recursive: true });
   if (loc.windows) {
     const cmdLauncher = path.join(loc.bin, "heituz.cmd");
@@ -246,7 +535,7 @@ async function main() {
       }
     }
   }
-  console.log(`Installed HeiTuzImgGen2 to ${destination}`);
+  for (const plan of plans) console.log(`Installed HeiTuzImgGen2${plan.host ? ` (${plan.host})` : ""} to ${plan.destination}`);
   console.log("Open a new terminal, then run: heituz update");
 }
 

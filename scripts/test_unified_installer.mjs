@@ -22,6 +22,10 @@ function invoke(args, env = {}, command = process.execPath) {
   return result.stdout;
 }
 
+function hostDestination(home, host) {
+  return path.join(home, `.${host}`, "skills", "HeiTuzImgGen2");
+}
+
 try {
   const updateManifest = { imggen2_target: "/tmp/imggen", vision_qc_requested: "auto" };
   const interactiveUpdate = imggenUpdateArgs(updateManifest, { interactive: true });
@@ -39,6 +43,88 @@ try {
   assert.equal(offlineVisionPlan.vision_qc.requested_mode, "auto");
   assert.equal(offlineVisionPlan.vision_qc.mode, "auto");
   assert.match(offlineVisionPlan.vision_qc.config, /vision-qc\.json$/);
+  const forwardedPlan = JSON.parse(invoke(["scripts/install.mjs", "--", "--dry-run", "--offline", "--agent", "claude"], { HEITUZ_TEST_PLATFORM: "linux" }));
+  assert.deepEqual(forwardedPlan.agent_targets, ["claude"]);
+  const updateHome = path.join(temp, "home-update-claude");
+  const updatePlan = JSON.parse(invoke([
+    "scripts/install.mjs", "--dry-run", "--offline",
+    "--target", path.join(updateHome, ".claude", "skills", "HeiTuzImgGen2"),
+    "--mpw-target", path.join(updateHome, ".claude", "skills", "HeiTuzMPW"),
+  ], { HOME: updateHome, USERPROFILE: updateHome, HEITUZ_TEST_PLATFORM: "linux", CI: "1" }));
+  assert.deepEqual(updatePlan.agent_targets, ["claude"]);
+  const partialOverridePlan = JSON.parse(invoke([
+    "scripts/install.mjs", "--dry-run", "--offline", "--agent", "codex",
+    "--target", path.join(updateHome, "custom-imggen2"),
+  ], { HOME: updateHome, USERPROFILE: updateHome, HEITUZ_TEST_PLATFORM: "linux", CI: "1" }));
+  assert.equal(partialOverridePlan.imggen2_target, path.join(updateHome, "custom-imggen2"));
+  assert.equal(partialOverridePlan.mpw_target, path.join(updateHome, ".codex", "skills", "HeiTuzMPW"));
+
+  for (const host of ["hermes", "claude", "codex"]) {
+    const hostHome = path.join(temp, `home-${host}`);
+    fs.mkdirSync(path.join(hostHome, `.${host}`), { recursive: true });
+    const hostPlan = JSON.parse(invoke(["scripts/install.mjs", "--dry-run", "--offline"], {
+      HOME: hostHome, USERPROFILE: hostHome, XDG_CONFIG_HOME: path.join(hostHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+    }));
+    assert.deepEqual(hostPlan.agent_targets, [host]);
+    assert.match(hostPlan.imggen2_target, new RegExp(`\\.${host}[/\\\\]skills[/\\\\]HeiTuzImgGen2$`, "u"));
+    assert.match(hostPlan.mpw_target, new RegExp(`\\.${host}[/\\\\]skills[/\\\\](?:prompt-writing[/\\\\])?HeiTuzMPW$`, "u"));
+    invoke(["scripts/install.mjs", "--offline", "--no-register", "--force"], {
+      HOME: hostHome, USERPROFILE: hostHome, XDG_CONFIG_HOME: path.join(hostHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+    });
+    const installed = hostDestination(hostHome, host);
+    assert.equal(fs.existsSync(path.join(installed, "SKILL.md")), true);
+    assert.equal(fs.existsSync(path.join(installed, "agents")), false);
+    const overlaySkill = path.join(root, "agents", host, "SKILL.md");
+    if (fs.existsSync(overlaySkill)) {
+      const installedSkill = fs.readFileSync(path.join(installed, "SKILL.md"), "utf8");
+      assert.equal(installedSkill, fs.readFileSync(overlaySkill, "utf8"));
+      assert.notEqual(installedSkill, fs.readFileSync(path.join(root, "SKILL.md"), "utf8"));
+    }
+  }
+
+  const noDetectedHome = path.join(temp, "home-none");
+  fs.mkdirSync(noDetectedHome, { recursive: true });
+  invoke(["scripts/install.mjs", "--offline", "--no-register", "--force"], {
+    HOME: noDetectedHome, USERPROFILE: noDetectedHome, XDG_CONFIG_HOME: path.join(noDetectedHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+  });
+  assert.equal(fs.existsSync(path.join(hostDestination(noDetectedHome, "hermes"), "SKILL.md")), true);
+
+  const multipleHome = path.join(temp, "home-multiple");
+  for (const host of ["hermes", "claude", "codex"]) fs.mkdirSync(path.join(multipleHome, `.${host}`), { recursive: true });
+  const multiplePlan = JSON.parse(invoke(["scripts/install.mjs", "--dry-run", "--offline"], {
+    HOME: multipleHome, USERPROFILE: multipleHome, XDG_CONFIG_HOME: path.join(multipleHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+  }));
+  assert.deepEqual(multiplePlan.agent_targets, ["hermes"]);
+  const allPlan = JSON.parse(invoke(["scripts/install.mjs", "--dry-run", "--offline", "--agent", "all"], {
+    HOME: multipleHome, USERPROFILE: multipleHome, XDG_CONFIG_HOME: path.join(multipleHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+  }));
+  assert.deepEqual(allPlan.agent_targets, ["hermes", "claude", "codex"]);
+  for (const install of allPlan.installs) {
+    const hostDir = install.agent === "hermes" ? ".hermes" : `.${install.agent}`;
+    assert.equal(install.imggen2_target.includes(hostDir), true);
+    assert.equal(install.mpw_target.includes(hostDir), true);
+  }
+  invoke(["scripts/install.mjs", "--offline", "--register", "--force", "--agent", "all"], {
+    HOME: multipleHome, USERPROFILE: multipleHome, XDG_CONFIG_HOME: path.join(multipleHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+  });
+  for (const host of ["hermes", "claude", "codex"]) {
+    assert.equal(fs.existsSync(path.join(hostDestination(multipleHome, host), "SKILL.md")), true);
+  }
+  const multipleManifest = path.join(multipleHome, "config", "heituz", "installation.json");
+  const multipleManifestData = JSON.parse(fs.readFileSync(multipleManifest, "utf8"));
+  assert.equal(multipleManifestData.version, 2);
+  assert.deepEqual(multipleManifestData.installations.map((installation) => installation.agent_host), ["hermes", "claude", "codex"]);
+  const multipleManifestBeforeUpdate = fs.readFileSync(multipleManifest, "utf8");
+  const multipleCli = path.join(multipleHome, "config", "heituz", "heituz.mjs");
+  const multipleUpdate = invoke([multipleCli, "update", "--dry-run"], {
+    HOME: multipleHome, USERPROFILE: multipleHome, XDG_CONFIG_HOME: path.join(multipleHome, "config"), HEITUZ_TEST_PLATFORM: "linux", CI: "1",
+  });
+  assert.match(multipleUpdate, /--no-register/u);
+  assert.equal(fs.readFileSync(multipleManifest, "utf8"), multipleManifestBeforeUpdate);
+  for (const host of ["hermes", "claude", "codex"]) {
+    assert.equal(multipleUpdate.includes(`HeiTuzImgGen2 update (${host})`), true);
+    assert.equal(multipleUpdate.includes(`HeiTuzMPW update (${host})`), true);
+  }
 
   const target = path.join(temp, "imggen2");
   invoke(["scripts/install.mjs", "--target", target, "--offline", "--register", "--vision-qc", "auto"], { HEITUZ_TEST_PLATFORM: "linux" });
@@ -61,7 +147,7 @@ try {
   assert.match(updater, /HeiTuzImgGen2 update/);
   assert.match(updater, /--vision-qc.*auto/);
   assert.match(updater, /HeiTuzMPW update/);
-  assert.doesNotMatch(updater, /\/Users\/eusin/);
+  assert.equal(updater.includes(os.homedir()), false, "update dry-run leaked the developer home directory");
   const visionQcSetup = invokeInstalled(["vision-qc", "setup"]);
   assert.match(visionQcSetup, /host's default Vision model/);
   const visionQcStatus = invokeInstalled(["vision-qc", "status"]);

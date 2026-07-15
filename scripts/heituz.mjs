@@ -79,26 +79,42 @@ Commands:
 }
 
 export function imggenUpdateArgs(manifest, { interactive }) {
-  const args = ["--yes", IMGGEN_REPO, "--", "--target", manifest.imggen2_target, "--force", "--skip-mpw", "--skip-codex"];
+  const args = ["--yes", IMGGEN_REPO, "--"];
+  if (manifest.agent_host) args.push("--agent", manifest.agent_host);
+  args.push("--target", manifest.imggen2_target, "--mpw-target", manifest.mpw_target, "--force", "--skip-mpw", "--skip-codex", "--no-register");
   const previous = manifest.vision_qc_requested || manifest.vision_qc_mode;
   const visionQc = previous === "off" ? "off" : "auto";
   args.push("--vision-qc", visionQc);
   return args;
 }
 
+export function manifestInstallations(manifest) {
+  if (Array.isArray(manifest.installations) && manifest.installations.length) {
+    return manifest.installations.map((installation) => ({ ...manifest, ...installation, installations: undefined }));
+  }
+  return [manifest];
+}
+
 export function update(manifest, { dryRun, forceCodex, interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) }) {
   const { windows } = locations();
-  if (!manifest.imggen2_target || !manifest.mpw_target) {
+  const installations = manifestInstallations(manifest);
+  if (installations.some((installation) => !installation.imggen2_target || !installation.mpw_target)) {
     throw new Error("Installation manifest is incomplete; rerun the HeiTuzImgGen2 installer.");
   }
   if (forceCodex || !codexExists(windows)) {
     const plan = codexInstallCommand(windows);
     run(plan.command, plan.args, { dryRun, label: "official Codex CLI install/update" });
   }
-  const imggen = npxInvocation(windows, imggenUpdateArgs(manifest, { interactive }));
-  run(imggen.command, imggen.args, { dryRun, label: "HeiTuzImgGen2 update" });
-  const mpw = npxInvocation(windows, ["--yes", MPW_REPO, "--", "--dest", manifest.mpw_target, "--force", "--quiet"]);
-  run(mpw.command, mpw.args, { dryRun, label: "HeiTuzMPW update" });
+  for (const installation of installations) {
+    const hostLabel = installation.agent_host ? ` (${installation.agent_host})` : "";
+    const imggen = npxInvocation(windows, imggenUpdateArgs(installation, { interactive }));
+    run(imggen.command, imggen.args, { dryRun, label: `HeiTuzImgGen2 update${hostLabel}` });
+    const mpwArgs = ["--yes", MPW_REPO, "--"];
+    if (installation.agent_host) mpwArgs.push("--target", installation.agent_host);
+    mpwArgs.push("--dest", installation.mpw_target, "--force", "--quiet");
+    const mpw = npxInvocation(windows, mpwArgs);
+    run(mpw.command, mpw.args, { dryRun, label: `HeiTuzMPW update${hostLabel}` });
+  }
 }
 
 function main(argv) {

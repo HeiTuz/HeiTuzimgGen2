@@ -13,6 +13,7 @@
     "SKILL.md",
     "README.md",
     "LICENSE",
+    "agents/**",
     "contracts/**",
     "examples/**",
     "!examples/**/__pycache__/**",
@@ -20,10 +21,16 @@
     "references/**",
     "scripts/*.py",
     "scripts/*.mjs",
-    "scripts/fixtures/**"
+    "scripts/fixtures/**",
+    "!**/.gjc/**",
+    "!**/.omx/**",
+    "!**/__pycache__/**",
+    "!**/*.pyc",
+    "!**/*.bak",
+    "!**/.*"
   ],
   "scripts": {
-    "test": "node scripts/run_python_tests.mjs && node scripts/test_installer_privacy.mjs && node scripts/test_unified_installer.mjs && node scripts/test_vision_qc_setup.mjs && node scripts/test_windows_paths.mjs",
+    "test": "node scripts/run_python_tests.mjs && node scripts/test_agent_detection.mjs && node scripts/test_installer_privacy.mjs && node scripts/test_unified_installer.mjs && node scripts/test_vision_qc_setup.mjs && node scripts/test_windows_paths.mjs",
     "smoke:install": "node scripts/smoke_install.mjs",
     "smoke:runtime": "node scripts/run_python_tests.mjs"
   },

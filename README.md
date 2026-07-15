@@ -46,13 +46,37 @@ HeiTuzImgGen2는 같은 목표를 공유하는 이미지들을 한 세트로 관
 
 ## 30초면 제작 환경이 붙습니다
 
-**한 번 설치하면 Codex CLI + ImgGen2 + MPW가 같이 붙습니다.**
+**한 줄이면 공식 Codex CLI + ImgGen2 + MPW가 같이 붙습니다.** 설치기가 이 컴퓨터의 에이전트 환경(Hermes·Claude Code·Codex)을 자동 감지해 맞는 위치를 고릅니다.
 
 ```bash
 npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
 # 또는
 bunx --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2
 ```
+
+### 자동 감지와 호스트 선택
+
+- **감지 신호**: `~/.hermes`, `~/.claude`, `~/.codex` 같은 잘 알려진 스킬 디렉터리·CLI 설치 흔적만 봅니다. 비밀값이나 설정 파일 내용은 읽지 않습니다.
+- **대화형 터미널**: 감지된 호스트를 보여주고 하나를 선택·확인합니다.
+- **CI·비대화형**: 절대 묻지 않습니다. 1개 감지 → 그대로 설치. 여러 개 감지 → Hermes 우선, Hermes가 없으면 `hermes > claude > codex` 우선순위의 첫 감지 대상. 0개 감지 → Hermes 위치에 설치(문서화된 기본값).
+- **ImgGen2와 HeiTuzMPW는 항상 같은 호스트에** 나란히 설치됩니다 — ImgGen2는 Hermes에, MPW는 다른 곳에 가는 어긋남이 없습니다.
+- Hermes가 기본·선호 환경입니다. Claude Code·Codex 설치는 규칙 본문이 동일한 채 호스트 통합 표면(발동·도구 명칭·frontmatter)만 마이그레이션된 변형을 받습니다 — 구조와 근거는 [agents/README.md](agents/README.md).
+
+| 호스트 | ImgGen2 | HeiTuzMPW |
+|---|---|---|
+| Hermes (기본·권장) | `~/.hermes/skills/HeiTuzImgGen2` | `~/.hermes/skills/prompt-writing/HeiTuzMPW` |
+| Claude Code | `~/.claude/skills/HeiTuzImgGen2` | `~/.claude/skills/HeiTuzMPW` |
+| Codex | `~/.codex/skills/HeiTuzImgGen2` | `~/.codex/skills/HeiTuzMPW` |
+
+명시 디렉터리 지정(`--target <dir>`, `--mpw-target <dir>`)은 항상 자동 감지를 이깁니다.
+
+```bash
+npx --yes --package github:HeiTuz/HeiTuzImgGen2 heituz-imggen2 -- \
+  --target "$HOME/.hermes/skills/HeiTuzImgGen2" \
+  --mpw-target "$HOME/.hermes/skills/prompt-writing/HeiTuzMPW"
+```
+
+### Codex CLI 경로
 
 설치기는 운영체제에 맞춰 공식 Codex 설치 경로를 사용합니다.
 

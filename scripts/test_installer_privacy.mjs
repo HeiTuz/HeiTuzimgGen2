@@ -18,7 +18,7 @@ function run(command, args) {
 function hasExcludedPath(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const name = entry.name;
-    if ([".git", ".gjc", ".omx", "docs-internal", "node_modules", "__pycache__"].includes(name) || name.endsWith(".pyc") || name.includes(".bak")) return true;
+    if (name.startsWith(".") || ["docs-internal", "node_modules", "__pycache__"].includes(name) || name.endsWith(".pyc") || name.includes(".bak")) return true;
     if (entry.isDirectory() && hasExcludedPath(path.join(dir, name))) return true;
   }
   return false;
@@ -30,11 +30,17 @@ try {
   assert.equal(fs.existsSync(path.join(destination, "SKILL.md")), true);
   assert.equal(fs.existsSync(path.join(destination, "contracts", "v1", "image-production-handoff.schema.json")), true);
   assert.equal(hasExcludedPath(destination), false, "installer copied excluded local state");
+  assert.equal(fs.existsSync(path.join(destination, "agents")), false, "installer leaked distribution overlays");
 
   const npmCli = process.env.npm_execpath;
   assert.ok(npmCli, "npm_execpath is required for package privacy smoke");
   const packed = JSON.parse(run(process.execPath, [npmCli, "pack", "--dry-run", "--json"]));
   const names = packed[0].files.map((file) => file.path);
+  const packageFiles = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).files;
+  assert.equal(packageFiles.includes("agents/**"), true, "npm files allowlist omits agent overlays");
+  if (fs.existsSync(path.join(root, "agents"))) {
+    assert.equal(names.some((name) => name.startsWith("agents/")), true, "npm package omits agent overlays");
+  }
   assert.equal(names.includes("contracts/v1/image-production-handoff.schema.json"), true,
     "npm package omits the public handoff schema");
   assert.equal(names.includes("examples/batch_100_variations.py"), true,
@@ -51,7 +57,7 @@ try {
   ]) {
     assert.equal(names.includes(example), true, `npm package omits ${example}`);
   }
-  assert.equal(names.some((name) => /(^|\/)(?:\.git|\.gjc|\.omx|docs-internal|node_modules|__pycache__)(?:\/|$)|\.pyc$|\.bak/u.test(name)), false,
+  assert.equal(names.some((name) => /(^|\/)\.[^/]+|(^|\/)(?:docs-internal|node_modules|__pycache__)(?:\/|$)|\.pyc$|\.bak/u.test(name)), false,
     "npm package includes excluded local state");
   console.log("installer/package privacy allowlist: OK");
 } finally {

@@ -207,6 +207,7 @@ try {
   fs.writeFileSync(gitBashLauncher, "#!/bin/sh\nexec node /tmp/_npx/stale/heituz.mjs \"$@\"\n");
   invoke(["scripts/install.mjs", "--target", windowsTarget, "--offline", "--register", "--vision-qc", "off"], {
     HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: localAppData, APPDATA: appData,
+    TEMP: path.join(temp, "declared-windows-temp"), TMP: path.join(temp, "declared-windows-temp"),
   });
   const windowsLauncher = path.join(localAppData, "HeiTuz", "bin", "heituz.cmd");
   const windowsPowerShellLauncher = path.join(localAppData, "HeiTuz", "bin", "heituz.ps1");

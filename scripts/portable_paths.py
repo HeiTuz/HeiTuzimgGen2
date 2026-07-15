@@ -141,6 +141,8 @@ def normalize_local_path(
             assert match is not None
             rest = (match.group(2) or "").replace("/", "\\")
             value = f"{match.group(1).upper()}:\\{rest}".rstrip("\\")
+        elif kind in {"windows_unc", "windows_unc_uri"}:
+            value = str(PureWindowsPath(value))
         elif kind == "portable_relative":
             value = value.replace("/", "\\")
         _validate_windows_components(value)

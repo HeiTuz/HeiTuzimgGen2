@@ -461,6 +461,13 @@ export async function main(argv = args) {
   }
 
   prepareInstallPlans(plans, options.force, loc);
+  helper.assertPersistentTargets({
+    installations: plans.map((plan) => ({
+      agent_host: plan.host,
+      imggen2_target: plan.destination,
+      mpw_target: plan.mpwTarget,
+    })),
+  }, { windows: loc.windows });
   const visionQcConfigs = installPlansTransaction(plans, visionQc);
 
   if (!options.skipCodex && !helper.codexExists(loc.windows)) {
@@ -506,11 +513,24 @@ export async function main(argv = args) {
   if (loc.windows) {
     const cmdLauncher = path.join(loc.bin, "heituz.cmd");
     const psLauncher = path.join(loc.bin, "heituz.ps1");
+    const gitBashLauncher = path.join(loc.home, ".local", "bin", "heituz");
     for (const stale of [path.join(loc.bin, "heituz"), path.join(loc.bin, "heituz.mjs")]) {
       fs.rmSync(stale, { force: true });
     }
     fs.writeFileSync(cmdLauncher, `@echo off\r\nnode "%APPDATA%\\HeiTuz\\heituz.mjs" %*\r\n`);
     fs.writeFileSync(psLauncher, `& node "$env:APPDATA\\HeiTuz\\heituz.mjs" @args\r\nexit $LASTEXITCODE\r\n`);
+    fs.mkdirSync(path.dirname(gitBashLauncher), { recursive: true });
+    fs.writeFileSync(gitBashLauncher, `#!/bin/sh\nappdata="$APPDATA"\ncase "$appdata" in\n  [A-Za-z]:\\\\*) appdata="$(cygpath -u "$appdata")" ;;\nesac\nexec node "$appdata/HeiTuz/heituz.mjs" "$@"\n`, { mode: 0o755 });
+    fs.chmodSync(gitBashLauncher, 0o755);
+    const begin = "# >>> heituz user bin >>>";
+    const end = "# <<< heituz user bin <<<";
+    for (const profile of [path.join(loc.home, ".profile"), path.join(loc.home, ".zprofile"), path.join(loc.home, ".bash_profile"), path.join(loc.home, ".bashrc")]) {
+      if (!fs.existsSync(profile)) continue;
+      const existing = fs.readFileSync(profile, "utf8");
+      const marker = new RegExp(`${begin}[^]*?${end}\\r?\\n?`, "gu");
+      const repaired = existing.replace(marker, "");
+      if (repaired !== existing) fs.writeFileSync(profile, repaired);
+    }
     if (process.platform === "win32") {
       const escapedBin = loc.bin.replace(/'/g, "''");
       const escapedConfig = loc.config.replace(/'/g, "''");

@@ -1,6 +1,6 @@
 {
   "name": "heituz-imggen2-skill",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "private": false,
   "description": "Provenance-safe ChatGPT subscription image production skill.",
   "license": "MIT",

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "heituz-unified-"));
 process.env.HEITUZ_INSTALLER_IMPORT = "1";
-const { imggenUpdateArgs, npxInvocation } = await import("./heituz.mjs");
+const { imggenUpdateArgs, isTransientWindowsPath, npxInvocation, repairLegacyManifest } = await import("./heituz.mjs");
 delete process.env.HEITUZ_INSTALLER_IMPORT;
 
 function invoke(args, env = {}, command = process.execPath) {
@@ -35,6 +35,27 @@ try {
   // Windows cannot spawn npx.cmd without a shell; the invocation must route through cmd.exe /c.
   assert.deepEqual(npxInvocation(true, ["--yes", "pkg"]), { command: "cmd.exe", args: ["/d", "/s", "/c", "npx", "--yes", "pkg"] });
   assert.deepEqual(npxInvocation(false, ["--yes", "pkg"]), { command: "npx", args: ["--yes", "pkg"] });
+  assert.equal(isTransientWindowsPath("C:\\Users\\alice\\AppData\\Local\\Temp\\_npx\\123\\package", { TEMP: "C:\\Users\\alice\\AppData\\Local\\Temp" }), true);
+  assert.equal(isTransientWindowsPath("C:\\Users\\alice\\.hermes\\skills\\HeiTuzImgGen2", { TEMP: "C:\\Users\\alice\\AppData\\Local\\Temp" }), false);
+  const repairHome = path.join(temp, "repair-home");
+  const legacy = {
+    version: 1,
+    imggen2_target: path.join(repairHome, ".hermes", "skills", "HeiTuzImgGen2"),
+    mpw_target: path.join(repairHome, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"),
+  };
+  assert.equal(repairLegacyManifest(legacy, { home: repairHome, windows: false }).installations[0].agent_host, "hermes");
+  assert.throws(
+    () => repairLegacyManifest({ ...legacy, imggen2_target: path.join(repairHome, "custom") }, { home: repairHome, windows: false }),
+    /Repair with: npx/u,
+  );
+  assert.throws(
+    () => repairLegacyManifest({
+      version: 1,
+      imggen2_target: "C:\\Users\\alice\\AppData\\Local\\Temp\\_npx\\123\\package",
+      mpw_target: "C:\\Users\\alice\\.hermes\\skills\\prompt-writing\\HeiTuzMPW",
+    }, { home: "C:\\Users\\alice", windows: true, env: { TEMP: "C:\\Users\\alice\\AppData\\Local\\Temp" } }),
+    /transient.*Repair with: npx --yes github:HeiTuz\/HeiTuzImgGen2 -- --force --register/iu,
+  );
   const plan = invoke(["scripts/install.mjs", "--dry-run"], { HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: path.join(temp, "local"), APPDATA: path.join(temp, "roaming") });
   assert.match(plan, /powershell\.exe/);
   assert.match(plan, /install\.ps1/);
@@ -181,6 +202,9 @@ try {
   fs.mkdirSync(windowsBin, { recursive: true });
   fs.writeFileSync(path.join(windowsBin, "heituz"), "stale extensionless launcher");
   fs.writeFileSync(path.join(windowsBin, "heituz.mjs"), "stale mjs launcher");
+  const gitBashLauncher = path.join(temp, ".local", "bin", "heituz");
+  fs.mkdirSync(path.dirname(gitBashLauncher), { recursive: true });
+  fs.writeFileSync(gitBashLauncher, "#!/bin/sh\nexec node /tmp/_npx/stale/heituz.mjs \"$@\"\n");
   invoke(["scripts/install.mjs", "--target", windowsTarget, "--offline", "--register", "--vision-qc", "off"], {
     HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: localAppData, APPDATA: appData,
   });
@@ -192,6 +216,53 @@ try {
   assert.match(fs.readFileSync(windowsPowerShellLauncher, "utf8"), /\$env:APPDATA\\HeiTuz\\heituz\.mjs/);
   assert.equal(fs.existsSync(path.join(windowsBin, "heituz")), false);
   assert.equal(fs.existsSync(path.join(windowsBin, "heituz.mjs")), false);
+  assert.equal(fs.existsSync(gitBashLauncher), true);
+  const gitBashContent = fs.readFileSync(gitBashLauncher, "utf8");
+  assert.match(gitBashContent, /\$appdata\/HeiTuz\/heituz\.mjs/u);
+  assert.equal(gitBashContent.includes("_npx"), false);
+  const degraded = spawnSync(process.execPath, [path.join(appData, "HeiTuz", "heituz.mjs"), "status"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, HOME: temp, USERPROFILE: temp, HEITUZ_TEST_PLATFORM: "win32", LOCALAPPDATA: localAppData, APPDATA: appData },
+  });
+  assert.notEqual(degraded.status, 0);
+  assert.equal(JSON.parse(degraded.stdout).healthy, false);
+  const degradedStatus = JSON.parse(degraded.stdout);
+  assert.equal(degradedStatus.manifest_path, path.join(appData, "HeiTuz", "installation.json"));
+  assert.equal(degradedStatus.manifest_version, 2);
+  assert.equal(degradedStatus.selected_launcher_path, windowsLauncher);
+  assert.equal(degradedStatus.target_status.length, 1);
+  assert.equal(degradedStatus.target_status[0].imggen2_exists, true);
+  assert.equal(degradedStatus.target_status[0].mpw_exists, false);
+  assert.equal(typeof degradedStatus.target_status[0].imggen2_version, "string");
+  assert.equal(degradedStatus.target_status[0].mpw_version, null);
+  assert.equal(degradedStatus.active_hermes.registered, false);
+  assert.match(degradedStatus.repair_recommendation, /^npx --yes /u);
+  assert.equal(degradedStatus.launcher_surfaces.cmd, windowsLauncher);
+  assert.equal(degradedStatus.launcher_surfaces.powershell, windowsPowerShellLauncher);
+  assert.equal(degradedStatus.launcher_surfaces.git_bash, gitBashLauncher);
+
+  const migrationHome = path.join(temp, "migration-home");
+  const migrationImggen = path.join(migrationHome, ".hermes", "skills", "HeiTuzImgGen2");
+  const migrationMpw = path.join(migrationHome, ".hermes", "skills", "prompt-writing", "HeiTuzMPW");
+  const migrationConfig = path.join(migrationHome, "config", "heituz");
+  fs.mkdirSync(path.join(migrationImggen, "scripts"), { recursive: true });
+  fs.mkdirSync(migrationMpw, { recursive: true });
+  fs.mkdirSync(migrationConfig, { recursive: true });
+  fs.writeFileSync(path.join(migrationImggen, "scripts", "heituz.mjs"), "");
+  fs.writeFileSync(path.join(migrationImggen, "SKILL.md"), "");
+  fs.writeFileSync(path.join(migrationImggen, "package.json"), JSON.stringify({ version: "1.9.1" }));
+  fs.writeFileSync(path.join(migrationMpw, "package.json"), JSON.stringify({ version: "1.2.3" }));
+  const migrationManifest = path.join(migrationConfig, "installation.json");
+  fs.writeFileSync(migrationManifest, JSON.stringify({ version: 1, imggen2_target: migrationImggen, mpw_target: migrationMpw }));
+  const migration = spawnSync(process.execPath, ["scripts/heituz.mjs", "status"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, HOME: migrationHome, USERPROFILE: migrationHome, XDG_CONFIG_HOME: path.join(migrationHome, "config"), HEITUZ_TEST_PLATFORM: "linux" },
+  });
+  assert.notEqual(migration.status, 0, "migration status remains degraded until launchers exist");
+  assert.equal(JSON.parse(fs.readFileSync(migrationManifest, "utf8")).version, 2);
+  assert.deepEqual(fs.readdirSync(migrationConfig).filter((name) => name.includes(".tmp-")), []);
   assert.equal(fs.existsSync(path.join(appData, "HeiTuz", "installation.json")), true);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(windowsTarget, "vision-qc.json"), "utf8")), { version: 2, requested_mode: "off", qc_mode: "off", reviewer: "host-default-vision" });
   console.log("unified install/update dry-run: OK");

@@ -60,6 +60,19 @@ class PortablePathTests(unittest.TestCase):
         long_path = "C:\\work\\" + ("nested\\" * 40) + "ref.png"
         self.assertTrue(paths.normalize_local_path(long_path, platform="win32").startswith("\\\\?\\C:\\"))
 
+    def test_unc_spellings_have_one_canonical_prefix(self):
+        suffix = r"share\상품 폴더\long " + ("구성요소\\" * 35) + "ref.png"
+        expected_short = "\\\\server\\" + suffix
+        for value in ("//server/" + suffix.replace("\\", "/"), "\\\\server\\" + suffix):
+            with self.subTest(value=value[:24]):
+                normalized = paths.normalize_local_path(value, platform="win32")
+                self.assertNotIn("/", normalized)
+                self.assertTrue(
+                    normalized == expected_short or normalized == "\\\\?\\UNC\\" + expected_short.removeprefix("\\\\")
+                )
+                prefix_count = normalized.count("\\\\server\\") + normalized.count("\\\\?\\UNC\\")
+                self.assertEqual(prefix_count, 1)
+
     def test_windows_reserved_names_and_trailing_dot_fail_closed(self):
         for value in (r"C:\work\CON.png", "C:\\work\\bad. "):
             with self.subTest(value=value), self.assertRaises(paths.PathCompatibilityError):

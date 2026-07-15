@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 const IMGGEN_REPO = "github:HeiTuz/HeiTuzImgGen2";
 const MPW_REPO = "github:HeiTuz/HeiTuzMPW";
 
+const REPAIR_COMMAND = "npx --yes github:HeiTuz/HeiTuzImgGen2 -- --force --register";
 function platform() {
   return process.env.HEITUZ_TEST_PLATFORM || process.platform;
 }
@@ -20,6 +21,158 @@ export function locations() {
     : path.join(process.env.XDG_CONFIG_HOME || path.join(home, ".config"), "heituz");
   const bin = windows ? path.join(process.env.LOCALAPPDATA || path.join(home, "AppData", "Local"), "HeiTuz", "bin") : path.join(home, ".local", "bin");
   return { home, windows, config, bin, manifest: path.join(config, "installation.json") };
+}
+
+export function isTransientWindowsPath(candidate, env = process.env) {
+  if (typeof candidate !== "string" || !candidate) return false;
+  const normalized = path.win32.resolve(candidate).toLowerCase().replaceAll("/", "\\");
+  const roots = [env.TEMP, env.TMP, env.TMPDIR]
+    .filter((value) => typeof value === "string" && /^(?:[A-Za-z]:[\\/]|\\\\)/u.test(value))
+    .map((value) => path.win32.resolve(value).toLowerCase().replaceAll("/", "\\"));
+  if (roots.some((root) => normalized === root || normalized.startsWith(`${root}\\`))) return true;
+  return /\\(?:_npx|npx|bunx|\.bun\\install\\cache|npm-cache)\\|\\_cacache\\tmp\\/iu.test(normalized);
+}
+
+export function assertPersistentTargets(manifest, { windows = locations().windows, env = process.env } = {}) {
+  if (!windows) return;
+  for (const installation of manifestInstallations(manifest)) {
+    for (const [label, candidate] of [["ImgGen2", installation.imggen2_target], ["HeiTuzMPW", installation.mpw_target]]) {
+      if (isTransientWindowsPath(candidate, env)) {
+        throw new Error(`${label} target is inside a transient TEMP/npx/bunx path: ${candidate}`);
+      }
+    }
+  }
+}
+
+function inferredAgentHost(home, installation) {
+  const normalized = (value) => path.resolve(value);
+  for (const host of ["hermes", "claude", "codex"]) {
+    const root = host === "hermes" ? ".hermes" : `.${host}`;
+    const imggen = path.join(home, root, "skills", "HeiTuzImgGen2");
+    const mpw = host === "hermes"
+      ? path.join(home, root, "skills", "prompt-writing", "HeiTuzMPW")
+      : path.join(home, root, "skills", "HeiTuzMPW");
+    if (normalized(installation.imggen2_target) === normalized(imggen) &&
+        normalized(installation.mpw_target) === normalized(mpw)) return host;
+  }
+  return null;
+}
+
+export function repairLegacyManifest(manifest, { home = locations().home, windows = locations().windows, env = process.env } = {}) {
+  if (manifest.version !== 1) return manifest;
+  const installations = manifestInstallations(manifest);
+  if (installations.length !== 1 || !installations[0].imggen2_target || !installations[0].mpw_target) {
+    throw new Error(`Legacy v1 manifest is ambiguous. Repair with: ${REPAIR_COMMAND}`);
+  }
+  try {
+    assertPersistentTargets(manifest, { windows, env });
+  } catch (error) {
+    throw new Error(`Legacy v1 manifest is transient and cannot be persisted. Repair with: ${REPAIR_COMMAND}. ${error.message}`);
+  }
+  const host = inferredAgentHost(home, installations[0]);
+  if (!host || (installations[0].agent_host && installations[0].agent_host !== host)) {
+    throw new Error(`Legacy v1 manifest target is not an unambiguous active agent installation. Repair with: ${REPAIR_COMMAND}`);
+  }
+  const repaired = { ...manifest, version: 2, agent_host: host };
+  repaired.installations = [{ agent_host: host, imggen2_target: manifest.imggen2_target, mpw_target: manifest.mpw_target, vision_qc_config: manifest.vision_qc_config }];
+  return repaired;
+}
+
+function installedVersion(target) {
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(target, "package.json"), "utf8")).version;
+    return typeof value === "string" && value ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeJsonAtomic(destination, value) {
+  const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(value, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    fs.renameSync(temporary, destination);
+    fs.chmodSync(destination, 0o600);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
+export function installationHealth(manifest, loc = locations()) {
+  const problems = [];
+  const installations = manifestInstallations(manifest);
+  const expectedHermes = {
+    imggen2_target: path.join(loc.home, ".hermes", "skills", "HeiTuzImgGen2"),
+    mpw_target: path.join(loc.home, ".hermes", "skills", "prompt-writing", "HeiTuzMPW"),
+  };
+  const target_status = installations.map((installation) => {
+    const imggen2_exists = Boolean(installation.imggen2_target && fs.existsSync(installation.imggen2_target));
+    const mpw_exists = Boolean(installation.mpw_target && fs.existsSync(installation.mpw_target));
+    const imggen2_version = installation.imggen2_target ? installedVersion(installation.imggen2_target) : null;
+    const mpw_version = installation.mpw_target ? installedVersion(installation.mpw_target) : null;
+    const status = {
+      agent_host: installation.agent_host || null,
+      imggen2_target: installation.imggen2_target || null,
+      imggen2_exists,
+      imggen2_version,
+      mpw_target: installation.mpw_target || null,
+      mpw_exists,
+      mpw_version,
+    };
+    if (!installation.imggen2_target || !installation.mpw_target) problems.push("manifest target is incomplete");
+    if (!imggen2_exists) problems.push(`ImgGen2 target missing: ${installation.imggen2_target}`);
+    else if (!fs.existsSync(path.join(installation.imggen2_target, "scripts", "heituz.mjs"))) problems.push(`updater missing from ${installation.imggen2_target}`);
+    if (!imggen2_version) problems.push(`ImgGen2 installed version unreadable at ${installation.imggen2_target}`);
+    if (!mpw_exists) problems.push(`HeiTuzMPW target missing: ${installation.mpw_target}`);
+    if (!mpw_version) problems.push(`HeiTuzMPW installed version unreadable at ${installation.mpw_target}`);
+    return status;
+  });
+  const hermes = installations.find((installation) => installation.agent_host === "hermes");
+  const active_hermes = {
+    registered: Boolean(hermes),
+    expected_imggen2_target: expectedHermes.imggen2_target,
+    expected_mpw_target: expectedHermes.mpw_target,
+    imggen2_target_matches: hermes && hermes.imggen2_target ? path.resolve(hermes.imggen2_target) === path.resolve(expectedHermes.imggen2_target) : hermes ? false : null,
+    mpw_target_matches: hermes && hermes.mpw_target ? path.resolve(hermes.mpw_target) === path.resolve(expectedHermes.mpw_target) : hermes ? false : null,
+    imggen2_version: installedVersion(expectedHermes.imggen2_target),
+    mpw_version: installedVersion(expectedHermes.mpw_target),
+  };
+  if (hermes && !active_hermes.imggen2_target_matches) problems.push(`Hermes ImgGen2 target is not active: ${hermes.imggen2_target}`);
+  if (hermes && !active_hermes.mpw_target_matches) problems.push(`Hermes MPW target is not active: ${hermes.mpw_target}`);
+  if (hermes && !active_hermes.imggen2_version) problems.push(`active Hermes ImgGen2 version unreadable: ${expectedHermes.imggen2_target}`);
+  if (hermes && !active_hermes.mpw_version) problems.push(`active Hermes MPW version unreadable: ${expectedHermes.mpw_target}`);
+  const launcher_surfaces = loc.windows
+    ? {
+        cmd: path.join(loc.bin, "heituz.cmd"),
+        powershell: path.join(loc.bin, "heituz.ps1"),
+        git_bash: path.join(loc.home, ".local", "bin", "heituz"),
+      }
+    : { posix: path.join(loc.bin, "heituz") };
+  const launcherExpectations = loc.windows
+    ? { cmd: /%APPDATA%\\HeiTuz\\heituz\.mjs/iu, powershell: /\$env:APPDATA\\HeiTuz\\heituz\.mjs/iu, git_bash: /\$appdata\/HeiTuz\/heituz\.mjs/u }
+    : { posix: /heituz\.mjs/u };
+  for (const [surface, launcher] of Object.entries(launcher_surfaces)) {
+    if (!fs.existsSync(launcher)) {
+      problems.push(`${surface} launcher missing: ${launcher}`);
+      continue;
+    }
+    const content = fs.readFileSync(launcher, "utf8");
+    if (!launcherExpectations[surface].test(content) || (loc.windows && isTransientWindowsPath(content))) {
+      problems.push(`${surface} launcher does not target the persistent updater: ${launcher}`);
+    }
+  }
+  const launcher_paths = Object.values(launcher_surfaces);
+  return {
+    healthy: problems.length === 0,
+    problems,
+    repair_recommendation: problems.length ? REPAIR_COMMAND : null,
+    selected_launcher_path: launcher_paths[0],
+    launcher_surfaces,
+    launcher_paths,
+    target_status,
+    active_hermes,
+    installed_versions: target_status.map(({ agent_host, imggen2_version, mpw_version }) => ({ agent_host, imggen2_version, mpw_version })),
+  };
 }
 
 export function npxInvocation(windows, args) {
@@ -98,6 +251,7 @@ export function manifestInstallations(manifest) {
 export function update(manifest, { dryRun, forceCodex, interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) }) {
   const { windows } = locations();
   const installations = manifestInstallations(manifest);
+  assertPersistentTargets(manifest, { windows });
   if (installations.some((installation) => !installation.imggen2_target || !installation.mpw_target)) {
     throw new Error("Installation manifest is incomplete; rerun the HeiTuzImgGen2 installer.");
   }
@@ -115,17 +269,33 @@ export function update(manifest, { dryRun, forceCodex, interactive = Boolean(pro
     const mpw = npxInvocation(windows, mpwArgs);
     run(mpw.command, mpw.args, { dryRun, label: `HeiTuzMPW update${hostLabel}` });
   }
+  if (!dryRun) {
+    const health = installationHealth(manifest);
+    if (!health.healthy) throw new Error(`Update completed but installation remains degraded: ${health.problems.join("; ")}`);
+  }
 }
 
 function main(argv) {
   const command = argv[0] || "help";
   const flags = new Set(argv.slice(1));
   if (command === "help" || command === "--help" || command === "-h") usage(0);
-  const { manifest } = locations();
+  const loc = locations();
+  const { manifest } = loc;
   if (!fs.existsSync(manifest)) throw new Error(`HeiTuz installation manifest is missing: ${manifest}`);
-  const data = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  const original = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  const data = repairLegacyManifest(original);
+  if (data !== original) writeJsonAtomic(manifest, data);
+  assertPersistentTargets(data);
   if (command === "status") {
-    console.log(JSON.stringify({ ...data, codex_present: codexExists(locations().windows) }, null, 2));
+    const health = installationHealth(data, loc);
+    console.log(JSON.stringify({
+      ...data,
+      manifest_path: manifest,
+      manifest_version: data.version ?? null,
+      codex_present: codexExists(loc.windows),
+      ...health,
+    }, null, 2));
+    if (!health.healthy) process.exitCode = 1;
     return;
   }
   if (command === "vision-qc") {

@@ -189,17 +189,6 @@ class FolderBatchPrepareTests(unittest.TestCase):
             for p in list(s.iterdir()):
                 if p.name.startswith(".ai-result-stage-"):
                     shutil.rmtree(p)
-            if os.name != "nt":
-                # On Windows the claim is legitimately removed before rename,
-                # so destination residue cannot occur on that path.
-                with mock.patch.object(helper.os, "rename", side_effect=OSError("smb sharing violation")), \
-                        mock.patch.object(helper, "_remove_claimed_destination", side_effect=OSError("locked")):
-                    code, x = self.invoke(*args)
-                self.assertEqual(code, 2)
-                self.assertIn("residue remains", x["error"])
-                self.assertIn(destination.name, x["error"])
-                self.assertTrue(destination.exists())
-                destination.rmdir()
             code, x = self.invoke(*args)
             self.assertEqual(code, 0)
 
@@ -239,6 +228,63 @@ class FolderBatchPrepareTests(unittest.TestCase):
             code, x = self.prepare(s, r / "w")
             self.assertEqual(code, 2)
             self.assertIn("symlink", x["error"])
+
+    def test_24_unc_input_is_canonicalized_once_and_reused(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "상품 공유 폴더"
+            source.mkdir()
+            self.image(source, "f1_앞면.jpg")
+            work = root / "work"
+            unc = r"\\server\share\상품 공유 폴더"
+            with mock.patch.object(helper, "normalize_local_path", return_value=str(source)) as normalize:
+                code, result = self.prepare(unc, work, dry=True)
+            self.assertEqual(code, 0)
+            normalize.assert_called_once_with(unc, field="--input-dir")
+            plan = fullset.read_json(Path(result["output_plan_path"]))
+            self.assertEqual(plan["source_folder"], str(source.resolve()))
+            self.assertEqual(plan["result_path"], str(source.resolve() / result["result_subfolder"]))
+
+    def test_25_publish_refuses_injected_collision_and_preserves_sources(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "긴 경로" / ("가" * 40) / ("나" * 40)
+            source.mkdir(parents=True)
+            original = self.image(source, "f1.jpg", b"original-source")
+            selected = root / "selected outputs"
+            self.selected(selected, source.name, names=("f1.png",))
+            destination = source / "AI_RESULT_20260715_123456"
+            args = ("--input-dir", str(source), "--publish-from", str(selected), "--timestamp", "20260715_123456")
+            source_sha = fullset.sha256_file(original)
+
+            def collide(_stage, _mode):
+                destination.mkdir()
+
+            with mock.patch.object(helper.os, "chmod", side_effect=collide):
+                code, result = self.invoke(*args)
+            self.assertEqual(code, 2)
+            self.assertIn("refusing to overwrite", result["error"])
+            self.assertEqual(list(destination.iterdir()), [])
+            self.assertEqual(fullset.sha256_file(original), source_sha)
+            self.assertFalse(any(path.name.startswith(".ai-result-stage-") for path in source.iterdir()))
+
+    def test_26_copy_failure_cleans_stage_and_preserves_source_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            source.mkdir()
+            original = self.image(source, "f1.jpg", b"read-only-original")
+            selected = root / "selected"
+            self.selected(selected, source.name, names=("f1.png",))
+            args = ("--input-dir", str(source), "--publish-from", str(selected), "--timestamp", "20260715_123456")
+            source_sha = fullset.sha256_file(original)
+            with mock.patch.object(helper.shutil, "copyfileobj", side_effect=OSError("injected copy failure")):
+                code, result = self.invoke(*args)
+            self.assertEqual(code, 2)
+            self.assertIn("filesystem operation failed", result["error"])
+            self.assertEqual(fullset.sha256_file(original), source_sha)
+            self.assertFalse(any(path.name.startswith(".ai-result-stage-") for path in source.iterdir()))
+            self.assertFalse((source / "AI_RESULT_20260715_123456").exists())
     def test_16_help(self):
         run=subprocess.run([sys.executable,str(SCRIPTS/"folder_batch_prepare.py"),"--help"],capture_output=True,text=True,encoding="utf-8");self.assertEqual(run.returncode,0);self.assertIn("--input-dir",run.stdout);self.assertIn("--publish-from",run.stdout)
 

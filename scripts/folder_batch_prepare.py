@@ -55,14 +55,20 @@ def _blocked(message: str) -> fullset.ContractError:
     return fullset.ContractError("blocked: " + message)
 
 
+def _canonical_filesystem_path(raw: str, *, field: str) -> Path:
+    """Normalize user input once and keep the resulting Path for all filesystem work."""
+    path = Path(normalize_local_path(raw, field=field)).expanduser()
+    if os.name == "nt" and str(path).startswith("\\\\"):
+        return path
+    return path.resolve()
+
+
 def source_folder(raw: str) -> Path:
-    normalized = normalize_local_path(raw, field="--input-dir")
-    path = Path(normalized).expanduser()
+    path = _canonical_filesystem_path(raw, field="--input-dir")
     if not path.exists() or not path.is_dir():
         raise _blocked(f"--input-dir is not an existing directory: {path}")
     if is_symlink_or_reparse(path):
         raise _blocked(f"--input-dir must not be a symlink/junction/reparse point: {path}")
-    path = path.resolve()
     if not path.name or "/" in path.name or "\\" in path.name:
         raise _blocked("--input-dir has an invalid folder name")
     return path
@@ -225,12 +231,13 @@ def _validate_provenance(provenance: Any, source: Path, selected: Path) -> list[
     return verified
 
 
-def _remove_claimed_destination(destination: Path) -> None:
-    if destination.is_dir() and not is_symlink_or_reparse(destination):
-        try:
-            next(destination.iterdir())
-        except StopIteration:
-            os.rmdir(destination)
+
+def _remove_claimed_destination(destination: Path) -> bool:
+    try:
+        destination.rmdir()
+    except OSError:
+        return False
+    return not destination.exists()
 
 
 def _cleanup_stage(stage: Path) -> bool:
@@ -318,16 +325,16 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
     destination = source / name
     if destination.exists():
         raise _blocked(f"result subfolder already exists: {destination}; refusing to overwrite")
-    selected = Path(normalize_local_path(args.publish_from, field="--publish-from")).expanduser()
+    selected = _canonical_filesystem_path(args.publish_from, field="--publish-from")
     if is_symlink_or_reparse(selected):
         raise _blocked(f"--publish-from must not be a symlink/junction/reparse point: {selected}")
-    selected = selected.resolve()
     if _paths_overlap(source, selected):
         raise _blocked("--publish-from overlaps read-only source folder")
     provenance, provenance_sha = _read_provenance_snapshot(selected / "provenance.json")
     verified = _validate_provenance(provenance, source, selected)
     stage: Path | None = None
     batch: dict[str, Any]
+    claimed_destination = False
     try:
         stage = Path(tempfile.mkdtemp(prefix=".ai-result-stage-", dir=source))
         for row in verified:
@@ -339,13 +346,15 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
         batch = {"schema_version": SCHEMA_VERSION, "source_folder": str(source), "result_folder": str(destination), "published": verified, "counts": {"published": len(verified), "skipped": 0, "failed": 0}, "qc_status": {"selection_mode": provenance["selection_mode"], "min_family_similarity_gate": provenance["min_family_similarity_gate"], "score": provenance["score"]}, "provenance_sha256": provenance_sha, "completed_at": timestamp}
         fullset.atomic_json(stage / "batch-summary.json", batch)
         try:
-            destination.mkdir()
-        except FileExistsError as exc:
-            raise _blocked(f"result subfolder already exists: {destination}; refusing to overwrite") from exc
-        try:
             os.chmod(stage, 0o755)
-            if os.name == "nt":
-                os.rmdir(destination)
+            if os.name != "nt":
+                try:
+                    destination.mkdir()
+                    claimed_destination = True
+                except FileExistsError as exc:
+                    raise _blocked(f"result subfolder already exists: {destination}; refusing to overwrite") from exc
+            if os.name == "nt" and destination.exists():
+                raise _blocked(f"result subfolder already exists: {destination}; refusing to overwrite")
             for attempt in range(3):
                 try:
                     os.rename(stage, destination)
@@ -357,14 +366,10 @@ def publish(args: argparse.Namespace) -> dict[str, Any]:
                         continue
                     raise
         except OSError as exc:
-            residue: list[str] = []
-            try:
-                _remove_claimed_destination(destination)
-            except OSError:
-                pass
-            if destination.exists():
-                residue.append(str(destination))
             stage_path = stage
+            residue = []
+            if claimed_destination and not _remove_claimed_destination(destination):
+                residue.append(str(destination))
             if stage_path is not None and not _cleanup_stage(stage_path):
                 residue.append(str(stage_path))
             stage = None

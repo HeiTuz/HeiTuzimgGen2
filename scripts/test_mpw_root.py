@@ -34,9 +34,15 @@ class MpwRootTests(unittest.TestCase):
                     mpw_root.resolve_mpw_root()
 
     def test_standard_resolution_prefers_hermes_installation(self):
-        expected = Path.home() / ".hermes" / "skills" / "prompt-writing" / "HeiTuzMPW"
-        with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(mpw_root.resolve_mpw_root(), expected)
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            hermes = home / ".hermes" / "skills" / "prompt-writing" / "HeiTuzMPW"
+            claude = home / ".claude" / "skills" / "HeiTuzMPW"
+            for root in (hermes, claude):
+                root.mkdir(parents=True)
+                (root / "SKILL.md").write_text("---\nname: HeiTuzMPW\n---\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"HOME": str(home)}, clear=True):
+                self.assertEqual(mpw_root.resolve_mpw_root(), hermes)
 
     def test_empty_environment_and_home_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:

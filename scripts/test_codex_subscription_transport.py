@@ -468,6 +468,81 @@ class CodexSubscriptionTransportTests(unittest.TestCase):
         self.assertEqual(with_text["failed_axes"], ["text_accuracy"])
         self.assertEqual(without_text["qc_status"], "passed")
         self.assertEqual(without_text["failed_axes"], [])
+    def test_qc_optional_identity_axis_passes_without_changing_canonical_average(self):
+        scores = {
+            "goal_fit": 4,
+            "text_accuracy": 4,
+            "material_realism": 4,
+            "layout": 4,
+            "identity_consistency": 5,
+        }
+        report = transport.evaluate_qc(scores, rendered_text_exists=True)
+        self.assertEqual(report["qc_status"], "passed")
+        self.assertEqual(report["average"], 4.0)
+        self.assertEqual(report["axis_scores"], {axis: float(score) for axis, score in scores.items()})
+
+    def test_qc_optional_identity_axis_floor_failure_has_delta(self):
+        report = transport.evaluate_qc(
+            {
+                "goal_fit": 5,
+                "text_accuracy": 5,
+                "material_realism": 5,
+                "layout": 5,
+                "identity_consistency": 3,
+            },
+            rendered_text_exists=False,
+        )
+        self.assertEqual(report["qc_status"], "failed")
+        self.assertEqual(report["failed_axes"], ["identity_consistency"])
+        self.assertEqual(
+            report["deltas"]["identity_consistency"],
+            "re-lock the identity anchors — face geometry, hairline/part, distinctive "
+            "marks — against the reference and regenerate only drifted panels.",
+        )
+        self.assertEqual(
+            transport.plan_qc_regeneration(Path("/tmp/identity.png"), report)["failed_axes"],
+            ["identity_consistency"],
+        )
+
+    def test_qc_rejects_unknown_optional_axis(self):
+        with self.assertRaisesRegex(ValueError, "unexpected=.*composition"):
+            transport.evaluate_qc(
+                {
+                    "goal_fit": 5,
+                    "text_accuracy": 5,
+                    "material_realism": 5,
+                    "layout": 5,
+                    "composition": 5,
+                },
+                rendered_text_exists=False,
+            )
+
+    def test_qc_four_axis_report_remains_unchanged(self):
+        report = transport.evaluate_qc(
+            {
+                "goal_fit": 5,
+                "text_accuracy": 5,
+                "material_realism": 5,
+                "layout": 5,
+            },
+            rendered_text_exists=True,
+        )
+        self.assertEqual(
+            report,
+            {
+                "qc_status": "passed",
+                "average": 5.0,
+                "axis_scores": {
+                    "goal_fit": 5.0,
+                    "text_accuracy": 5.0,
+                    "material_realism": 5.0,
+                    "layout": 5.0,
+                },
+                "rendered_text_exists": True,
+                "failed_axes": [],
+                "deltas": {},
+            },
+        )
 
     def test_qc_plan_returns_failed_axis_deltas_and_one_output_only(self):
         report = transport.evaluate_qc(

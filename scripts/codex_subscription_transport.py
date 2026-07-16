@@ -32,6 +32,7 @@ _SESSION_ID_RE = re.compile(
 )
 _SESSION_ID_KEYS = {"thread_id", "session_id", "threadId", "sessionId"}
 QC_AXES = ("goal_fit", "text_accuracy", "material_realism", "layout")
+OPTIONAL_QC_AXES = ("identity_consistency",)
 QC_MINIMUM_AVERAGE = 4.0
 QC_AXIS_FLOOR = 4.0
 QC_DELTAS = {
@@ -42,6 +43,10 @@ QC_DELTAS = {
     ),
     "material_realism": "Clarify the material, surface texture, and reflectance behavior.",
     "layout": "Clarify the bands, grid, margins, and element positions.",
+    "identity_consistency": (
+        "re-lock the identity anchors — face geometry, hairline/part, distinctive "
+        "marks — against the reference and regenerate only drifted panels."
+    ),
 }
 
 
@@ -155,18 +160,24 @@ def _not_evaluated_qc() -> dict[str, object]:
 
 def _normalized_qc_scores(axis_scores: Mapping[str, object]) -> dict[str, float]:
     expected = set(QC_AXES)
+    optional = set(OPTIONAL_QC_AXES)
     actual = set(axis_scores)
     missing = expected - actual
-    unexpected = actual - expected
+    unexpected = actual - expected - optional
     if missing or unexpected:
         details = []
         if missing:
             details.append(f"missing={sorted(missing)}")
         if unexpected:
             details.append(f"unexpected={sorted(unexpected)}")
-        raise ValueError(f"QC scores must contain exactly {QC_AXES}: {', '.join(details)}")
+        raise ValueError(
+            f"QC scores must contain {QC_AXES} and may contain {OPTIONAL_QC_AXES}: "
+            f"{', '.join(details)}"
+        )
     scores: dict[str, float] = {}
-    for axis in QC_AXES:
+    for axis in QC_AXES + OPTIONAL_QC_AXES:
+        if axis not in axis_scores:
+            continue
         value = axis_scores[axis]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"QC score for {axis} must be a number from 0 to 5.")
@@ -182,18 +193,26 @@ def evaluate_qc(
 ) -> dict[str, object]:
     """Evaluate supplied local or human QC scores without inspecting an image.
 
-    The pass rule is intentionally limited to the four documented axes: average
-    score at least 4, plus text accuracy at least 4 whenever text was rendered.
+    The canonical average uses only the four required axes. text_accuracy, when
+    rendered, and optional identity_consistency, when supplied, must meet the floor.
     """
     if not isinstance(rendered_text_exists, bool):
         raise ValueError("rendered_text_exists must be a boolean.")
     scores = _normalized_qc_scores(axis_scores)
-    average = sum(scores.values()) / len(QC_AXES)
+    average = sum(scores[axis] for axis in QC_AXES) / len(QC_AXES)
     average_passed = average >= QC_MINIMUM_AVERAGE
     text_floor_passed = (
         not rendered_text_exists or scores["text_accuracy"] >= QC_AXIS_FLOOR
     )
-    qc_status = "passed" if average_passed and text_floor_passed else "failed"
+    identity_floor_passed = (
+        "identity_consistency" not in scores
+        or scores["identity_consistency"] >= QC_AXIS_FLOOR
+    )
+    qc_status = (
+        "passed"
+        if average_passed and text_floor_passed and identity_floor_passed
+        else "failed"
+    )
 
     failed_axes: list[str] = []
     if not average_passed:
@@ -204,6 +223,8 @@ def evaluate_qc(
         and "text_accuracy" not in failed_axes
     ):
         failed_axes.append("text_accuracy")
+    if not identity_floor_passed:
+        failed_axes.append("identity_consistency")
 
     return {
         "qc_status": qc_status,
@@ -276,7 +297,7 @@ def plan_qc_regeneration(
     if not isinstance(raw_failed_axes, (list, tuple)):
         raise ValueError("QC report failed_axes must be a list or tuple.")
     failed_axes = list(raw_failed_axes)
-    if any(axis not in QC_AXES for axis in failed_axes):
+    if any(axis not in QC_AXES + OPTIONAL_QC_AXES for axis in failed_axes):
         raise ValueError("QC report contains an unknown failed axis.")
 
     promo_status = "not_evaluated"

@@ -121,6 +121,49 @@ class BatchManifestTests(unittest.TestCase):
             ref.write_bytes(b"changed-reference")
             _, changed_hash = batch.load_manifest(manifest, root / "out")
             self.assertNotEqual(hash1, changed_hash)
+    def test_new_ledger_persists_canonical_metadata_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "jobs.jsonl"
+            write_jsonl(manifest, [{
+                "id": "product",
+                "prompt": "catalog cut",
+                "output_path": "product.png",
+                "metadata": {"product_spec": {"material": "steel"}},
+                "series_locks": {"silhouette": "tapered"},
+            }])
+            jobs, manifest_hash = batch.load_manifest(manifest, root / "out")
+            state = batch.new_ledger(jobs, manifest_hash, {})["jobs"]["product"]
+            self.assertEqual(state["metadata"], jobs[0].metadata)
+            self.assertEqual(
+                state["metadata_sha256"],
+                batch._sha256_bytes(batch.canonical_json(jobs[0].metadata).encode()),
+            )
+
+    def test_metadata_drift_is_rejected_but_legacy_ledger_resumes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "jobs.jsonl"
+            record = {
+                "id": "product",
+                "prompt": "catalog cut",
+                "output_path": "product.png",
+                "metadata": {"product_spec": {"material": "steel"}},
+            }
+            write_jsonl(manifest, [record])
+            jobs, manifest_hash = batch.load_manifest(manifest, root / "out")
+            ledger = batch.new_ledger(jobs, manifest_hash, {})
+            record["metadata"]["product_spec"]["material"] = "aluminum"
+            write_jsonl(manifest, [record])
+            changed_jobs, changed_hash = batch.load_manifest(manifest, root / "out")
+            ledger["manifest_sha256"] = changed_hash
+            with self.assertRaisesRegex(batch.BatchError, "metadata drift"):
+                batch.recover_and_validate_ledger(ledger, changed_jobs, changed_hash)
+
+            legacy = batch.new_ledger(changed_jobs, changed_hash, {})
+            legacy["jobs"]["product"].pop("metadata_sha256")
+            legacy["jobs"]["product"].pop("metadata")
+            batch.recover_and_validate_ledger(legacy, changed_jobs, changed_hash)
 
     def test_duplicate_ids_and_outputs_are_rejected(self):
         cases = [
@@ -375,6 +418,11 @@ class BatchExecutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); manifest, _ = self.make_manifest(root, 2)
             first = FakeRunner(); self.approved_run(manifest, root / "out", first, workers="2")
+            legacy = batch.load_ledger(root / "out" / batch.LEDGER_NAME)
+            for state in legacy["jobs"].values():
+                state.pop("metadata_sha256")
+                state.pop("metadata")
+            batch.atomic_write_json(root / "out" / batch.LEDGER_NAME, legacy)
             second = FakeRunner(); summary = self.approved_run(manifest, root / "out", second, workers="2")
             self.assertEqual(second.calls, [])
             self.assertEqual(summary["counts"]["succeeded"], 2)
@@ -462,7 +510,7 @@ class BatchQcTests(unittest.TestCase):
             root = Path(tmp); manifest = root / "jobs.jsonl"; out = root / "out"
             write_jsonl(manifest, [
                 {"id": "good", "prompt": "good prompt", "output_path": "good.png", "rendered_text_exists": True},
-                {"id": "bad", "prompt": "bad prompt", "output_path": "bad.png", "rendered_text_exists": True, "metadata": {"series": "locked"}},
+                {"id": "bad", "prompt": "bad prompt", "output_path": "bad.png", "rendered_text_exists": True, "metadata": {"series": "locked"}, "series_locks": {"silhouette": "invariant"}},
             ])
             complete_approved_batch(manifest, out, FakeRunner(), workers="2")
             qc = root / "qc.jsonl"
@@ -479,6 +527,7 @@ class BatchQcTests(unittest.TestCase):
             self.assertTrue(rows[0]["output_path"].startswith("retries/"))
             self.assertEqual(rows[0]["metadata"]["series"], "locked")
             self.assertEqual(rows[0]["metadata"]["reference_evidence"], [])
+            self.assertEqual(rows[0]["metadata"]["series_locks"], {"silhouette": "invariant"})
 
     def test_retry_manifest_runs_in_same_output_root_with_separate_ledger(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -248,10 +248,13 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
 
 
 def _initial_job_state(job: BatchJob) -> dict[str, object]:
+    metadata = dict(job.metadata)
     return {
         "status": "pending",
         "output_path": job.output_path,
         "prompt_hash": _sha256_bytes(job.prompt.encode()),
+        "metadata": metadata,
+        "metadata_sha256": _sha256_bytes(canonical_json(metadata).encode()),
         "reference_evidence": job.metadata.get("reference_evidence", []),
         "qc_required": job.qc_required,
         "attempts": [],
@@ -374,6 +377,12 @@ def recover_and_validate_ledger(
         state = states.get(job.id)
         if not isinstance(state, dict):
             raise BatchError(f"Manifest drift: missing ledger job {job.id}")
+        # Ledgers created before metadata provenance was added remain resumable.
+        if (
+            "metadata_sha256" in state
+            and state["metadata_sha256"] != _sha256_bytes(canonical_json(job.metadata).encode())
+        ):
+            raise BatchError(f"Manifest metadata drift for job {job.id}")
         if state.get("prompt_hash") != _sha256_bytes(job.prompt.encode()) or state.get("output_path") != job.output_path:
             raise BatchError(f"Manifest drift for job {job.id}")
         if state["status"] == "running":

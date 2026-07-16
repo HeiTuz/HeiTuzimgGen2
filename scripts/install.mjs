@@ -186,6 +186,22 @@ function copyOverlayTree(current, destination, overlayRoot) {
   }
 }
 
+function preserveLocalOverlays(current, destination, currentRoot = current) {
+  for (const entry of fs.readdirSync(current)) {
+    const from = path.join(current, entry);
+    const stat = fs.lstatSync(from);
+    if (stat.isDirectory()) {
+      preserveLocalOverlays(from, destination, currentRoot);
+    } else if (stat.isFile() && entry.endsWith(".local.md")) {
+      const rel = path.relative(currentRoot, from);
+      const to = path.join(destination, rel);
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+      fs.chmodSync(to, stat.mode & 0o777);
+    }
+  }
+}
+
 function validateHostOverlay(sourceRoot, host) {
   const normalized = normalizeAgentHost(host);
   const overlay = path.join(sourceRoot, "agents", normalized);
@@ -395,6 +411,7 @@ export function installPlansTransaction(plans, visionQc, { sourceRoot = source }
       staged.push({ ...plan, stageRoot, payload });
       installPayload({ sourceRoot, destination: payload, host: plan.host });
       configureVisionQc(payload, visionQc);
+      if (fs.existsSync(plan.destination)) preserveLocalOverlays(plan.destination, payload);
     }
     const applied = [];
     try {

@@ -1,5 +1,6 @@
 """Verify machine-local calibration overlays stay out of distributable artifacts."""
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -63,6 +64,29 @@ class LocalOverlayExclusionTests(unittest.TestCase):
             )
             self.assertEqual(installed.returncode, 0, installed.stderr or installed.stdout)
             self.assertFalse((destination / "references" / "probe.local.md").exists())
+            sentinel = destination / "references" / "full-body-calibration.local.md"
+            sentinel.write_bytes(b"machine-local calibration\x00preserve me\n")
+            sentinel_sha256 = hashlib.sha256(sentinel.read_bytes()).hexdigest()
+            symlink_target = temporary_root / "symlink-target.local.md"
+            symlink_target.write_bytes(b"do not copy symlink targets\n")
+            symlink_overlay = destination / "references" / "symlink.local.md"
+            try:
+                symlink_overlay.symlink_to(symlink_target)
+            except OSError as error:
+                self.skipTest(f"symlinks are required to verify local overlay safety: {error}")
+
+            refreshed = subprocess.run(
+                [node, "scripts/install.mjs", "--offline", "--agent", "hermes", "--target", str(destination), "--force"],
+                cwd=source,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(refreshed.returncode, 0, refreshed.stderr or refreshed.stdout)
+            self.assertEqual(hashlib.sha256(sentinel.read_bytes()).hexdigest(), sentinel_sha256)
+            self.assertFalse((destination / "references" / "probe.local.md").exists())
+            self.assertFalse(symlink_overlay.exists())
+            self.assertFalse(symlink_overlay.is_symlink())
 
     def test_canonical_skill_uses_local_overlay_contract_without_personal_defaults(self):
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")

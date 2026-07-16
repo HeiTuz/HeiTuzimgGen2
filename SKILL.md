@@ -1,7 +1,7 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
-version: 1.9.3
+version: 1.10.0
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
@@ -94,7 +94,7 @@ For bulk ideation/reference-board requests, use `scripts/creative_batch.py`. It 
 
 ### Reference-locked full-body variation series
 
-**Tall-fashion calibration for this user:** start at `180cm, 8-head proportion` for a long, slim full-body editorial baseline unless the user specifies another target. The previously used `170cm, 7.5-head` brief can read visually short in a vertical fashion frame despite being anatomically plausible. Bind the numbers to visible controls—long but realistic inseam, natural shoulder/hip/joint proportions, full head-to-toe framing, shoes fully visible, restrained medium-telephoto perspective, and a light contact shadow. Do not fake height by stretching limbs or unnaturally narrowing joints.
+**Full-body proportion and height targets:** use, in priority order, (a) the current request's own numbers; (b) an optional machine-local calibration overlay at `references/full-body-calibration.local.md` when present (read-if-present; never packaged or installed by the unified installer; personal defaults such as preferred height/head-count live there); or (c) otherwise ask the user once. Bind the numbers to visible controls—long but realistic inseam, natural shoulder/hip/joint proportions, full head-to-toe framing, shoes fully visible, restrained medium-telephoto perspective, and a light contact shadow. Do not fake height by stretching limbs or unnaturally narrowing joints.
 
 When the user asks for N full-body variants of one person from an attached portrait or rotation sheet, this is **not** text-only ideation: use `codex_subscription_batch.py` with the reference in every manifest record and run the pilot-QC gate. A 3×3 face/side/back contact sheet is a valid single identity reference; bind observable locks into every prompt: face geometry and distinctive marks, the hairline, part, length/style, and distinctive loose strands actually observed in the supplied reference, realistic body geometry, requested height/proportion, full head-to-toe framing, and no hand/foot crop. Keep the identity lock invariant while varying only scene, wardrobe, pose, and lighting. Store the same locks in `metadata`/`series_locks` so retry records cannot silently drift. Generate one neutral studio full-body pilot first; after Vision confirms identity, scale, and framing, open fan-out. For final series QC, inspect contact sheets for cross-series drift and use full-resolution single-image review only for ambiguous candidates; then reconcile every accepted ID through the batch QC JSONL before delivery. Do not claim a requested aspect ratio solely from a prompt token—verify PNG dimensions after transport.
 

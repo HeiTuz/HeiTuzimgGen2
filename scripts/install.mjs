@@ -138,7 +138,7 @@ export function shouldCopy(rel, { includeAgents = false } = {}) {
   if (!ALLOWED_ROOTS.has(parts[0])) return false;
   if (!includeAgents && parts[0] === "agents") return false;
   return !parts.some((part) => EXCLUDED_PARTS.has(part)) &&
-    !path.basename(rel).startsWith(".") && !rel.endsWith(".pyc") && !rel.endsWith(".bak");
+    !path.basename(rel).startsWith(".") && !rel.endsWith(".pyc") && !rel.endsWith(".bak") && !rel.endsWith(".local.md");
 }
 
 function copyTree(current, destination, sourceRoot) {
@@ -164,7 +164,8 @@ function overlayEntryIsSafe(relative) {
   return !parts.some((part) => EXCLUDED_PARTS.has(part)) &&
     !path.basename(relative).startsWith(".") &&
     !relative.endsWith(".pyc") &&
-    !relative.endsWith(".bak");
+    !relative.endsWith(".bak") &&
+    !relative.endsWith(".local.md");
 }
 
 function copyOverlayTree(current, destination, overlayRoot) {

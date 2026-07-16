@@ -1,13 +1,13 @@
 ---
 name: HeiTuzimgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow. Claude Code host surface: the optional Grok route requires Hermes-native tooling and stays disabled on this host."
-version: 1.9.2
+version: 1.9.3
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   host_surface: claude
-  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.9.2"
+  canonical_source: "HeiTuz/HeiTuzimgGen2 SKILL.md v1.9.3"
   tags: [image-generation, image-editing, chatgpt]
   category: creative
 ---

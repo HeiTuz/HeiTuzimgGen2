@@ -1,16 +1,19 @@
 import copy
 import importlib.util
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
 
+try:
+    from mpw_root import no_installation_message, resolve_mpw_root
+except ModuleNotFoundError:
+    from scripts.mpw_root import no_installation_message, resolve_mpw_root
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
-MPW_ROOT = Path(os.environ["HEITUZ_MPW_ROOT"]).expanduser() if os.environ.get("HEITUZ_MPW_ROOT") else None
-
+MPW_ROOT = resolve_mpw_root()
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -390,7 +393,7 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
 
     def test_portable_producer_to_consumer_handoff_is_network_free(self):
         if MPW_ROOT is None or mpw_compiler is None:
-            self.skipTest("set HEITUZ_MPW_ROOT to run cross-skill handoff integration")
+            self.skipTest(no_installation_message())
         self.assertEqual(
             (SKILL_ROOT / "references" / "apparel-handoff.schema.json").read_bytes(),
             (MPW_ROOT / "contracts" / "v1" / "apparel-handoff.schema.json").read_bytes(),

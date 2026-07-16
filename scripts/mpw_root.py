@@ -57,7 +57,12 @@ def resolve_mpw_root() -> Path | None:
         return validate_mpw_root(Path(override), source="HEITUZ_MPW_ROOT")
 
     for candidate in STANDARD_ROOTS:
-        root = candidate.expanduser()
+        try:
+            root = candidate.expanduser()
+        except RuntimeError:
+            # No resolvable home directory (e.g. stripped env on Windows):
+            # standard per-user locations cannot exist.
+            return None
         if is_mpw_installation(root):
             return root
     return None

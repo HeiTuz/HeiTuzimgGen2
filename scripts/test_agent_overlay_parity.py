@@ -80,34 +80,34 @@ def apply_substitutions(body: str, substitutions: tuple[tuple[str, str], ...]) -
 class AgentOverlayParityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.package_version = json.loads((ROOT / "package.json").read_text())["version"]
-        cls.canonical = (ROOT / "SKILL.md").read_text()
+        cls.package_version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+        cls.canonical = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         cls.canonical_body = canonical_rule_body(cls.canonical)
 
     def test_frontmatter_version_matches_package(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
-                frontmatter, _ = split_frontmatter((ROOT / "agents" / host / "SKILL.md").read_text())
+                frontmatter, _ = split_frontmatter((ROOT / "agents" / host / "SKILL.md").read_text(encoding="utf-8"))
                 self.assertEqual(frontmatter_value(frontmatter, "version"), self.package_version)
 
     def test_canonical_source_names_package_version(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
-                frontmatter, _ = split_frontmatter((ROOT / "agents" / host / "SKILL.md").read_text())
+                frontmatter, _ = split_frontmatter((ROOT / "agents" / host / "SKILL.md").read_text(encoding="utf-8"))
                 source = frontmatter_value(frontmatter, "canonical_source")
                 self.assertEqual(source, f"HeiTuz/HeiTuzimgGen2 SKILL.md v{self.package_version}")
 
     def test_normalized_rule_body_matches_canonical(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
-                overlay = (ROOT / "agents" / host / "SKILL.md").read_text()
+                overlay = (ROOT / "agents" / host / "SKILL.md").read_text(encoding="utf-8")
                 expected = apply_substitutions(self.canonical_body, BODY_SUBSTITUTIONS[host])
                 self.assertEqual(overlay_rule_body(overlay), expected)
 
     def test_overlay_is_a_real_host_migration(self) -> None:
         for host in HOSTS:
             with self.subTest(host=host):
-                self.assertNotEqual((ROOT / "agents" / host / "SKILL.md").read_text(), self.canonical)
+                self.assertNotEqual((ROOT / "agents" / host / "SKILL.md").read_text(encoding="utf-8"), self.canonical)
 
     def test_hermes_uses_only_the_canonical_entrypoint(self) -> None:
         self.assertEqual(sorted(path.name for path in (ROOT / "agents" / "hermes").iterdir()), ["README.md"])

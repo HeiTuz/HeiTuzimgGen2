@@ -41,12 +41,12 @@ class MpwRootTests(unittest.TestCase):
             for root in (hermes, claude):
                 root.mkdir(parents=True)
                 (root / "SKILL.md").write_text("---\nname: HeiTuzMPW\n---\n", encoding="utf-8")
-            with mock.patch.dict(os.environ, {"HOME": str(home)}, clear=True):
+            with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}, clear=True):
                 self.assertEqual(mpw_root.resolve_mpw_root(), hermes)
 
     def test_empty_environment_and_home_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.dict(os.environ, {"HOME": tmp}, clear=True):
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp}, clear=True):
                 self.assertIsNone(mpw_root.resolve_mpw_root())
 
     def test_found_install_without_manifest_raises(self):

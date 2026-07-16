@@ -11,6 +11,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(
+    (ROOT / "agents").is_dir(),
+    "SKIP: agents/ overlays absent (install artifact) — pack/installer exclusion applies to the canonical source tree only",
+)
 class LocalOverlayExclusionTests(unittest.TestCase):
     def _temporary_source(self, temporary_root: Path) -> Path:
         source = temporary_root / "source"

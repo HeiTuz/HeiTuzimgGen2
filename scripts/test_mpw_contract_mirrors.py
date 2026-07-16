@@ -4,9 +4,9 @@ from pathlib import Path
 import unittest
 
 try:
-    from mpw_root import no_installation_message, resolve_mpw_root
+    from mpw_root import no_installation_message, require_contracts_manifest, resolve_mpw_root
 except ModuleNotFoundError:
-    from scripts.mpw_root import no_installation_message, resolve_mpw_root
+    from scripts.mpw_root import no_installation_message, require_contracts_manifest, resolve_mpw_root
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -27,9 +27,10 @@ class MPWContractMirrorTests(unittest.TestCase):
         if self.mpw_root is None:
             self.skipTest(no_installation_message())
 
-        manifest_path = self.mpw_root / "contracts" / "manifest.json"
-        if not manifest_path.is_file():
-            self.skipTest(f"SKIP: HeiTuzMPW manifest not found: {manifest_path}")
+        try:
+            manifest_path = require_contracts_manifest(self.mpw_root)
+        except RuntimeError as exc:
+            self.fail(str(exc))
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.manifest_files = self.manifest.get("files", {})
 

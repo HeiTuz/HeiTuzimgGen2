@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 from typing import Literal
-
+try:
+    import mpw_root
+except ModuleNotFoundError:
+    from scripts import mpw_root
 MpwMode = Literal["auto", "off", "required"]
 
 
@@ -18,28 +20,14 @@ class MpwPromptError(RuntimeError):
 
 
 def discover_mpw_root(explicit: Path | None = None) -> Path | None:
-    candidates: list[Path] = []
-    if explicit is not None:
-        candidates.append(explicit)
-    env_root = os.environ.get("HEITUZ_MPW_ROOT")
-    if env_root:
-        candidates.append(Path(env_root))
-    here = Path(__file__).resolve().parent.parent
-    candidates.extend((
-        Path.home() / ".hermes" / "skills" / "prompt-writing" / "HeiTuzMPW",
-        Path.home() / ".hermes" / "skills" / "HeiTuzMPW",
-        Path.home() / ".codex" / "skills" / "HeiTuzMPW",
-        here.parent / "HeiTuzMPW-release",
-        here.parent / "HeiTuzMPW",
-    ))
-    seen: set[Path] = set()
-    for candidate in candidates:
-        root = candidate.expanduser().resolve(strict=False)
-        if root in seen:
-            continue
-        seen.add(root)
-        if (root / "scripts" / "compile_image_variations.py").is_file():
-            return root
+    """Return a shared-resolver installation only when its compiler is present."""
+    root = (
+        mpw_root.validate_mpw_root(explicit, source="--mpw-root")
+        if explicit is not None
+        else mpw_root.resolve_mpw_root()
+    )
+    if root is not None and (root / "scripts" / "compile_image_variations.py").is_file():
+        return root
     return None
 
 

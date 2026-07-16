@@ -73,6 +73,10 @@ def apply_substitutions(body: str, substitutions: tuple[tuple[str, str], ...]) -
     return body
 
 
+@unittest.skipUnless(
+    (ROOT / "agents").is_dir(),
+    "SKIP: agents/ overlays absent (install artifact) — overlay parity applies to the canonical source tree only",
+)
 class AgentOverlayParityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

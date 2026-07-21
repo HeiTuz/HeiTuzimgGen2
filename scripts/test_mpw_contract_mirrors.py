@@ -50,7 +50,7 @@ class MPWContractMirrorTests(unittest.TestCase):
                     authority_hash,
                     f"{mirror_name}: mirror sha256={mirror_hash}, MPW manifest sha256={authority_hash}; "
                     f"contract_release={contract_release}; the mirror has FORKED from the MPW authority "
-                    "and must be re-synced from HeiTuzMPW/contracts.",
+                    "and must be re-synced from MPW/contracts.",
                 )
 
 

@@ -608,7 +608,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--execute", action="store_true", help="Perform the approved live call")
     parser.add_argument("--codex-bin", type=Path, help="Explicit official Codex CLI executable")
     parser.add_argument("--mpw", choices=("auto", "off", "required"), default="auto", help="MPW prompt enhancement for simple text-only generation")
-    parser.add_argument("--mpw-root", type=Path, help="Explicit HeiTuzMPW installation root")
+    parser.add_argument("--mpw-root", type=Path, help="Explicit MPW installation root")
     args = parser.parse_args(argv)
     if args.output is not None and args.batch_dir is not None:
         print(json.dumps({"error": "Use either --output or --batch-dir, not both."}), file=sys.stderr)

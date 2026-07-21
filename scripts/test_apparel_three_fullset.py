@@ -61,7 +61,7 @@ class ApparelDynamicFullSetTests(unittest.TestCase):
             "vision_role_map": role_map,
             "normalized_color_identity": list(colors),
             "unique_color_count": len(colors),
-            "heituzmpw_folder_master": "same immutable folder master",
+            "mpw_folder_master": "same immutable folder master",
             "qc_contract": "source fidelity, support removal, pure white, no invention, family similarity",
             "outputs": self.outputs,
             **({"selection_mode": selection_mode} if selection_mode is not None else {}),

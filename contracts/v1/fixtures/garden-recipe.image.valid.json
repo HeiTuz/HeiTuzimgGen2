@@ -1,0 +1,91 @@
+{
+  "schema_version": "garden-recipe/v1",
+  "recipe_version": 1,
+  "recipe_id": "gr_editorial_20260711",
+  "source": {
+    "reference_id": "ref_7f2a91c4d6e8",
+    "reference_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "provenance": {
+    "producer": "image-reference-adapter",
+    "producer_version": "1.1.0",
+    "analysis_schema_version": "image-reference-analysis/v1",
+    "analysis_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "category": "photo_editorial",
+  "confidence": 0.91,
+  "observations": {
+    "subject": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_subject_01",
+          "value": "single adult subject in an upright three-quarter pose",
+          "confidence": 0.96,
+          "basis": "visual"
+        }
+      ]
+    },
+    "camera": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_camera_01",
+          "value": "eye-level medium portrait with restrained depth compression",
+          "confidence": 0.83,
+          "basis": "visual"
+        }
+      ]
+    },
+    "lighting": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_light_01",
+          "value": "large soft side key with low-contrast fill",
+          "confidence": 0.88,
+          "basis": "visual"
+        }
+      ]
+    },
+    "palette": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_palette_01",
+          "value": "#C7B7A4",
+          "confidence": 0.94,
+          "basis": "pixel_sampled",
+          "role": "background neutral",
+          "material": "matte wall"
+        }
+      ]
+    }
+  },
+  "inferences": [
+    {
+      "inference_id": "inf_tone_01",
+      "claim": "quiet contemporary editorial mood",
+      "confidence": 0.78,
+      "based_on": ["obs_camera_01", "obs_light_01", "obs_palette_01"]
+    }
+  ],
+  "qualified_tokens": [
+    {
+      "term": "quiet editorial",
+      "effect": "keeps the frame restrained and magazine-like",
+      "scene_fit": "single-subject portrait",
+      "en": ["quiet editorial", "restrained magazine portrait"]
+    }
+  ],
+  "locks": {
+    "identity": ["preserve the same fictional adult identity across all blocks"],
+    "subject": ["one adult subject", "upright three-quarter pose"]
+  },
+  "exclusions": ["extra people", "invented logos", "identity drift"],
+  "intended_use": {
+    "mode": "IMAGE",
+    "engine": "higgsfield",
+    "goal": "Generate a self-contained editorial portrait while retaining the observed subject and mood evidence."
+  }
+}

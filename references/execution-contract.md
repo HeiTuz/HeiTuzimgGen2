@@ -3,7 +3,7 @@
 ## Supported route
 
 The only authorized route is the official Codex CLI using an existing ChatGPT subscription session and its built-in `image_generation` tool. The helper does not force an agent or image model; Codex selects the supported image route. Reasoning effort remains `medium`.
-`HeiTuzMPW` owns image-prompt compilation when installed. HeiTuzimgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
+`MPW` owns image-prompt compilation when installed. ImgGen2 owns only transport, session-scoped artifact recovery, and QC; the handoff is exactly the final compiled `IMAGE` prompt, never the rough request or prompt fragments.
 
 No image-generation path in this skill may read authentication files, extract cookies, automate a web page, call a private endpoint, or use an API key. Risk-based post-generation QC is delegated to the host's default Vision tool for reference/edit/product/promo work; simple text-only generation skips the visual loop. The installed `vision-qc.json` contains only version, mode, and reviewer-routing metadata; credentials or provider-specific model names are forbidden. `auto` follows the live host Vision configuration and `off` disables visual review while preserving local artifact validation.
 

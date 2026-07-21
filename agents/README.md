@@ -1,6 +1,6 @@
 # agents/ — per-host distribution overlays
 
-This folder holds the **per-host install overlays** for HeiTuzImgGen2. The repository root (SKILL.md + references/ + scripts/ + contracts/ + examples/) is the single canonical source; each host folder carries only the minimal migrated entry/instruction surface for that host — never a full repository fork.
+This folder holds the **per-host install overlays** for ImgGen2. The repository root (SKILL.md + references/ + scripts/ + contracts/ + examples/) is the single canonical source; each host folder carries only the minimal migrated entry/instruction surface for that host — never a full repository fork.
 
 ## Install model
 
@@ -22,17 +22,17 @@ installed payload = canonical allowlisted tree + agents/<host>/ overlay (same-na
 
 ## Why `agents/<host>/` — convention survey evidence (2026-07)
 
-A survey of five comparable public multi-agent skill/installer repositories (oh-my-hermes, tw93/Waza, higgsfield-skills, god-tibo-imagen, master-prompt-writer) found **no stronger public convention** for distributing per-host payload variants: all of them ship a single canonical payload, at most adding root-level instruction files (`AGENTS.md`, `CLAUDE.md`, `INSTALL_FOR_AGENTS.md`). Since the `AGENTS.md` standard makes "agents" the de-facto name for agent instruction surfaces, `agents/<host>/` is the most self-describing umbrella that does not collide with existing roots. HeiTuzMPW uses the identical convention.
+A survey of five comparable public multi-agent skill/installer repositories (oh-my-hermes, tw93/Waza, higgsfield-skills, god-tibo-imagen, master-prompt-writer) found **no stronger public convention** for distributing per-host payload variants: all of them ship a single canonical payload, at most adding root-level instruction files (`AGENTS.md`, `CLAUDE.md`, `INSTALL_FOR_AGENTS.md`). Since the `AGENTS.md` standard makes "agents" the de-facto name for agent instruction surfaces, `agents/<host>/` is the most self-describing umbrella that does not collide with existing roots. MPW uses the identical convention.
 
 ## Release gate — mandatory before ending any rule-changing session
 
-Installed trees (e.g. `~/.hermes/skills/HeiTuzImgGen2`) are build artifacts of this repository. Local green is not deployment.
+Installed trees (e.g. `~/.hermes/skills/ImgGen2`) are build artifacts of this repository. Local green is not deployment.
 
-1. **Rollback hazard**: `heituz update` reinstalls both ImgGen2 and HeiTuzMPW from GitHub. Any local improvement that has not been pushed is silently replaced by the older published version on the next update. On 2026-07-16 an entire release of in-place install-tree edits was found undeployed this way; consumer-side fallbacks can make the regression look healthy.
+1. **Rollback hazard**: `imggen update` reinstalls both ImgGen2 and MPW from GitHub. Any local improvement that has not been pushed is silently replaced by the older published version on the next update. On 2026-07-16 an entire release of in-place install-tree edits was found undeployed this way; consumer-side fallbacks can make the regression look healthy.
 2. **Version parity check (mandatory)**: before ending the session, verify the remote version matches the local SKILL.md/package.json:
 
    ```sh
-   curl -s https://raw.githubusercontent.com/HeiTuz/HeiTuzimgGen2/main/package.json | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])"
+   curl -s https://raw.githubusercontent.com/ImgGen2/ImgGen2/main/package.json | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])"
    ```
 
    A mismatch means the work is undeployed and the session cannot be closed.

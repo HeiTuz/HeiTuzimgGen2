@@ -1,0 +1,27 @@
+{
+  "schema_version": "imggen2-production-record/v1",
+  "id": "job-editorial-01",
+  "full_prompt": "A complete source-backed image prompt.",
+  "output_path": "jobs/editorial-01.png",
+  "reference_ids": ["ref_7f2a91c4d6e8"],
+  "ar": "3:4",
+  "size": "1024x1536",
+  "quality": "high",
+  "output_format": "png",
+  "metadata": {
+    "mpw_lineage": {
+      "schema_version": "mpw-lineage/v1",
+      "garden_recipe_id": "gr_editorial_20260711",
+      "garden_recipe_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "prompt_bundle_id": "pb_abcdefghijklmnopqrst",
+      "prompt_bundle_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "adapter_options_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "compiler_version": "1.0.0",
+      "reference_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "compile_facts": {
+      "promotional": false,
+      "rendered_text_expected": false
+    }
+  }
+}

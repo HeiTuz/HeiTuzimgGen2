@@ -1,0 +1,18 @@
+{
+  "schema_version": "mpw-recompile-request/v1",
+  "compiler_owner": "MPW",
+  "source_job_id": "job-editorial-01",
+  "garden_recipe_id": "gr_editorial_20260711",
+  "garden_recipe_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "prompt_bundle_id": "pb_abcdefghijklmnopqrst",
+  "prompt_bundle_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "adapter_options_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "prior_final_prompt_sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "reference_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+  "retry_of": "job-editorial-01",
+  "retry_generation": 1,
+  "failed_axes": ["goal_fit"],
+  "failed_promo_checks": [],
+  "reason_codes": ["qc_axis:goal_fit"],
+  "requested_delta_codes": ["clarify_goal_fit"]
+}

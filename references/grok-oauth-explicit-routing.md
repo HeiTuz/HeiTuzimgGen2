@@ -15,7 +15,7 @@ Tool availability is session-scoped. After enabling or configuring Hermes image 
 
 ## Single image
 
-1. Compile the final IMAGE prompt through the ordinary HeiTuzMPW boundary when available.
+1. Compile the final IMAGE prompt through the ordinary MPW boundary when available.
 2. Record `requested_provider: grok`, `auth_mode: xai-oauth`, and the requested geometry. Never record credential values.
 3. Invoke the native `image_generate` tool once with the xAI-backed model selected by Hermes configuration.
 4. Materialize the returned image locally immediately; remote result URLs are not durable delivery evidence.

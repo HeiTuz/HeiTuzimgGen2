@@ -1,0 +1,19 @@
+{
+  "schema_version": "production-adapter-options/v1",
+  "job_id": "job-editorial-01",
+  "output_path": "jobs/editorial-01.png",
+  "ar": "3:4",
+  "size": "1024x1536",
+  "quality": "high",
+  "output_format": "png",
+  "garden_recipe_id": "gr_editorial_20260711",
+  "garden_recipe_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "prompt_bundle_id": "pb_abcdefghijklmnopqrst",
+  "prompt_bundle_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "qc_applicability": {
+    "promotional": false,
+    "rendered_text_expected": false,
+    "evidence_reference_ids": [],
+    "classification_source": "garden_recipe"
+  }
+}

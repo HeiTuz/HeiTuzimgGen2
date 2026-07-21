@@ -229,10 +229,10 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
     reported_count = raw.get("unique_color_count")
     if reported_count is not None and reported_count != len(color_identities):
         raise ContractError("handoff unique_color_count does not match the Vision role map")
-    folder_master = str(raw.get("heituzmpw_folder_master", "")).strip()
+    folder_master = str(raw.get("mpw_folder_master", "")).strip()
     qc_contract = str(raw.get("qc_contract", "")).strip()
     if not folder_master or not qc_contract:
-        raise ContractError("HeiTuzMPW folder master and QC contract are required")
+        raise ContractError("MPW folder master and QC contract are required")
     selection_mode = normalize_selection_mode(raw.get("selection_mode"))
 
     return {
@@ -245,7 +245,7 @@ def validate_folder_contract(raw: Any) -> dict[str, Any]:
         "candidate_attempt_count": attempts,
         "task_count": attempts,
         "selection_mode": selection_mode,
-        "heituzmpw_folder_master": folder_master,
+        "mpw_folder_master": folder_master,
         "qc_contract": qc_contract,
         "outputs": outputs,
         "transport": "standard-imggen2-backend",

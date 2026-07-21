@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Locate HeiTuzMPW and compile simple or bulk image prompts without residue."""
+"""Locate MPW and compile simple or bulk image prompts without residue."""
 from __future__ import annotations
 
 import json
@@ -43,7 +43,7 @@ def compile_manifest(
 ) -> Path:
     root = discover_mpw_root(mpw_root)
     if root is None:
-        raise MpwPromptError("HeiTuzMPW variation compiler is unavailable; install/update HeiTuzMPW or pass --mpw-root.")
+        raise MpwPromptError("MPW variation compiler is unavailable; install/update MPW or pass --mpw-root.")
     compiler = root / "scripts" / "compile_image_variations.py"
     output.parent.mkdir(parents=True, exist_ok=True)
     request = {"concept": prompt, "style": style, "output_prefix": output_prefix, "locks": {}}
@@ -57,7 +57,7 @@ def compile_manifest(
     if completed.returncode != 0:
         output.unlink(missing_ok=True)
         detail = completed.stderr.strip() or "compiler failed without diagnostics"
-        raise MpwPromptError(f"HeiTuzMPW variation compiler failed: {detail}")
+        raise MpwPromptError(f"MPW variation compiler failed: {detail}")
     return output
 
 
@@ -67,16 +67,16 @@ def compile_single_prompt(prompt: str, *, mode: MpwMode = "auto", mpw_root: Path
     root = discover_mpw_root(mpw_root)
     if root is None:
         if mode == "required":
-            raise MpwPromptError("--mpw required but HeiTuzMPW variation compiler was not found.")
+            raise MpwPromptError("--mpw required but MPW variation compiler was not found.")
         return prompt, False
-    with tempfile.TemporaryDirectory(prefix="heituz-mpw-single-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="imggen-mpw-single-") as tmp:
         manifest = Path(tmp) / "single.jsonl"
         compile_manifest(prompt, "", 1, manifest, mpw_root=root, output_prefix="images")
         try:
             row = json.loads(manifest.read_text(encoding="utf-8").splitlines()[0])
             compiled = row["full_prompt"]
         except (IndexError, KeyError, json.JSONDecodeError) as exc:
-            raise MpwPromptError("HeiTuzMPW returned an invalid single-prompt manifest.") from exc
+            raise MpwPromptError("MPW returned an invalid single-prompt manifest.") from exc
     if not isinstance(compiled, str) or not compiled.strip():
-        raise MpwPromptError("HeiTuzMPW returned an empty compiled prompt.")
+        raise MpwPromptError("MPW returned an empty compiled prompt.")
     return compiled.strip(), True

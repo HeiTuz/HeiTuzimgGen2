@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import codex_subscription_transport as transport
 from portable_paths import foreign_path_message
 
-SCHEMA_VERSION = "heituz-image-production-handoff/v1"
+SCHEMA_VERSION = "image-production-handoff/v2"
 JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 RATIO_RE = re.compile(r"^[1-9][0-9]*:[1-9][0-9]*$")
 SIZE_RE = re.compile(r"^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$")

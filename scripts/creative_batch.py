@@ -22,7 +22,7 @@ class CreativeBatchError(RuntimeError):
 def _workspace_for(output_root: Path, prompt: str, style: str, count: int, seed: int | None) -> Path:
     identity = json.dumps({"prompt": prompt, "style": style, "count": count, "seed": seed}, ensure_ascii=False, sort_keys=True)
     suffix = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
-    return output_root.parent / f".{output_root.name}.heituz-work-{suffix}"
+    return output_root.parent / f".{output_root.name}.imggen-work-{suffix}"
 
 
 def _regular_pngs(root: Path) -> list[Path]:

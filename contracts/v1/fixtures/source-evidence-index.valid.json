@@ -1,0 +1,9 @@
+{
+  "schema_version": "source-evidence-index/v1",
+  "references": [
+    {
+      "reference_id": "ref_7f2a91c4d6e8",
+      "reference_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}

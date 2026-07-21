@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gajae.local/prompt-contracts/mpw-recompile-request/v1",
+  "title": "MPW recompile request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "compiler_owner", "source_job_id", "garden_recipe_id", "garden_recipe_sha256", "prompt_bundle_id", "prompt_bundle_sha256", "adapter_options_sha256", "prior_final_prompt_sha256", "reference_digest", "retry_of", "retry_generation", "failed_axes", "failed_promo_checks", "reason_codes", "requested_delta_codes"],
+  "properties": {
+    "schema_version": {"const": "mpw-recompile-request/v1"},
+    "compiler_owner": {"const": "MPW"},
+    "source_job_id": {"$ref": "#/$defs/jobId"},
+    "garden_recipe_id": {"type": "string", "pattern": "^gr_[A-Za-z0-9_-]{8,128}$"},
+    "garden_recipe_sha256": {"$ref": "#/$defs/sha256"},
+    "prompt_bundle_id": {"type": "string", "pattern": "^pb_[A-Za-z0-9_-]{8,128}$"},
+    "prompt_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "adapter_options_sha256": {"$ref": "#/$defs/sha256"},
+    "prior_final_prompt_sha256": {"$ref": "#/$defs/sha256"},
+    "reference_digest": {"$ref": "#/$defs/sha256"},
+    "retry_of": {"$ref": "#/$defs/jobId"},
+    "retry_generation": {"type": "integer", "minimum": 1},
+    "failed_axes": {"type": "array", "items": {"type": "string", "enum": ["goal_fit", "text_accuracy", "material_realism", "layout"]}},
+    "failed_promo_checks": {"type": "array", "items": {"type": "string", "enum": ["physical_type_subject_interaction", "generic_card_regression", "printed_meta_ui_not_literal", "color_lock_2_to_3", "finishing_devices_1_to_3", "korean_glyph_mask_safety"]}},
+    "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "requested_delta_codes": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["clarify_goal_fit", "resolve_text_from_source", "clarify_material_realism", "clarify_layout", "resolve_promo_physical_type_subject_interaction", "resolve_promo_generic_card_regression", "resolve_promo_printed_meta_ui_not_literal", "resolve_promo_color_lock_2_to_3", "resolve_promo_finishing_devices_1_to_3", "resolve_promo_korean_glyph_mask_safety"]}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "jobId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+  }
+}

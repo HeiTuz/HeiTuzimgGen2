@@ -1,0 +1,21 @@
+{
+  "schema_version": "image-production-handoff/v2",
+  "job_id": "launch-card-01",
+  "operation": "edit",
+  "prompt": "Create a clean product launch card using the supplied product as the identity reference. Keep the product shape and label unchanged. Place it on a pale stone surface with soft window light. Use a centered 4:5 composition with restrained navy typography.",
+  "negative_prompt": "Do not alter the product, label, logo, or proportions.",
+  "input_images": [
+    {
+      "path": "assets/product-front.png",
+      "role": "Product identity and label reference"
+    }
+  ],
+  "aspect_ratio": "4:5",
+  "image_size": "1024x1280",
+  "output": {
+    "filename": "launch-card.png"
+  },
+  "metadata": {
+    "campaign": "spring-launch"
+  }
+}

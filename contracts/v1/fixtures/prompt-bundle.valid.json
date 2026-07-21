@@ -1,0 +1,56 @@
+{
+  "schema_version": "prompt-bundle/v1",
+  "bundle_version": 1,
+  "bundle_id": "pb_editorial_20260711",
+  "source_recipe": {
+    "recipe_id": "gr_editorial_20260711",
+    "recipe_hash": "sha256:6e3deb25fa97604112f04243114dc661f36974acb70cfe135ccad64dff4d4a58"
+  },
+  "handoff": {
+    "protocol": "generation-handoff/v1",
+    "mode": "IMAGE",
+    "engine": "higgsfield",
+    "prompt_blocks": [
+      {
+        "block_id": "block_editorial_01",
+        "text": "한 명의 성인 피사체, 조용한 현대 화보. 눈높이 미디엄 포트레이트, 절제된 원근 압축. 큰 소프트 사이드 키와 낮은 대비 필. 무광 벽 배경색 #C7B7A4. 동일한 가상 성인 정체성, 직립 3/4 포즈, 한 명만 유지. 로고·워터마크·추가 인물·정체성 변화 없음. 🎞️",
+        "unicode_char_count": 152
+      }
+    ],
+    "immutable_locks": {
+      "identity": [
+        "preserve the same fictional adult identity across all blocks"
+      ],
+      "subject": [
+        "one adult subject",
+        "upright three-quarter pose"
+      ]
+    },
+    "variable_axes": [
+      {
+        "name": "crop",
+        "allowed_values": [
+          "medium portrait",
+          "waist-up portrait"
+        ]
+      }
+    ],
+    "negative_constraints": [
+      "extra people",
+      "invented logos",
+      "identity drift"
+    ],
+    "reference_requirements": [
+      {
+        "reference_id": "ref_7f2a91c4d6e8",
+        "purpose": "identity and overall color-signature reference",
+        "required": true
+      }
+    ],
+    "qc_acceptance_criteria": [
+      "Exactly one adult subject is visible.",
+      "Identity and upright three-quarter pose match the immutable locks.",
+      "Every prompt block is self-contained and at most 2000 Unicode characters."
+    ]
+  }
+}

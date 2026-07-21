@@ -1,0 +1,96 @@
+{
+  "schema_version": "garden-recipe/v1",
+  "recipe_version": 1,
+  "recipe_id": "gr_dashboard_20260711",
+  "source": {
+    "reference_id": "ref_3d8b2e7c9a10",
+    "reference_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "provenance": {
+    "producer": "design-reference-adapter",
+    "producer_version": "1.0.1",
+    "analysis_schema_version": "design-reference-analysis/v1",
+    "analysis_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "category": "ui_layout",
+  "confidence": 0.89,
+  "observations": {
+    "subject": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_subject_ui_01",
+          "value": "desktop analytics dashboard with a persistent left navigation rail",
+          "confidence": 0.95,
+          "basis": "visual"
+        }
+      ]
+    },
+    "camera": {
+      "status": "not_applicable",
+      "items": []
+    },
+    "lighting": {
+      "status": "not_applicable",
+      "items": []
+    },
+    "palette": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_palette_ui_01",
+          "value": "#F4F1EA",
+          "confidence": 0.92,
+          "basis": "pixel_sampled",
+          "role": "application canvas",
+          "material": null
+        }
+      ]
+    },
+    "layout": {
+      "status": "observed",
+      "items": [
+        {
+          "observation_id": "obs_layout_01",
+          "value": "approximately 1:4 navigation-to-content width with a twelve-column content grid",
+          "confidence": 0.82,
+          "basis": "visual"
+        }
+      ]
+    }
+  },
+  "inferences": [
+    {
+      "inference_id": "inf_hierarchy_01",
+      "claim": "dense operational information is intentionally softened by wide grouping gaps",
+      "confidence": 0.76,
+      "based_on": ["obs_layout_01", "obs_palette_ui_01"]
+    }
+  ],
+  "qualified_tokens": [
+    {
+      "term": "calm operational density",
+      "effect": "keeps dense metrics readable without flattening hierarchy",
+      "scene_fit": "desktop analytics workflows",
+      "en": ["calm operational density", "layered dashboard hierarchy"]
+    }
+  ],
+  "locks": {
+    "identity": [],
+    "subject": ["desktop analytics dashboard", "persistent left navigation rail", "main metric workspace"]
+  },
+  "layout_tokens": [
+    {
+      "term": "twelve-column content grid",
+      "effect": "aligns cards and comparison panels",
+      "scene_fit": "wide desktop viewport",
+      "en": ["12-column content grid"]
+    }
+  ],
+  "exclusions": ["brand imitation", "pixel-exact claims", "flat card soup"],
+  "intended_use": {
+    "mode": "DESIGN",
+    "engine": "frontend-agent",
+    "goal": "Generate an implementation prompt that preserves the observed hierarchy and qualified layout tokens."
+  }
+}

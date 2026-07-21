@@ -1,5 +1,5 @@
 ---
-name: HeiTuzimgGen2
+name: ImgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with an explicit-only optional Grok route gated on Hermes xAI OAuth. Includes provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow."
 version: 1.10.0
 author: HeiTuz
@@ -11,9 +11,9 @@ metadata:
     category: creative
 ---
 
-# HeiTuzimgGen2
+# ImgGen2
 
-Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. Codex remains the default for every ordinary request. A separate Grok route exists only for a current request that explicitly names `Grok`, `그록`, or `xAI` as the image provider, and only when Hermes has `xai-oauth` plus its native xAI `image_generate` tool. The skill remains a transport and result-QC tool. When `HeiTuzMPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
+Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. Codex remains the default for every ordinary request. A separate Grok route exists only for a current request that explicitly names `Grok`, `그록`, or `xAI` as the image provider, and only when Hermes has `xai-oauth` plus its native xAI `image_generate` tool. The skill remains a transport and result-QC tool. When `MPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
 
 ## Capabilities
 
@@ -68,7 +68,7 @@ Do not invoke Grok through `hermes chat`, `progrok`, browser cookies, or a new p
 
 ### Portable compiled handoff
 
-Direct prompt invocation remains fully supported and does not require another skill. An installed `HeiTuzMPW` compiler may instead emit `heituz-image-production-handoff/v1` JSON. Consume it without host-specific routing:
+Direct prompt invocation remains fully supported and does not require another skill. An installed `MPW` compiler may instead emit `image-production-handoff/v2` JSON. Consume it without host-specific routing:
 
 ```bash
 python scripts/consume_image_handoff.py request.json \
@@ -90,7 +90,7 @@ python scripts/codex_subscription_batch.py \
 
 The first cut is always a sequential transport pilot. If that job requires visual QC, bounded fan-out begins only after its independent QC passes. A simple text-only pilot with no references, product-photo correction, promotional layout, or explicit review request skips Vision QC and continues in the same pass. The batch owns an atomic ledger; resume is hash-verified against ledger-owned outputs, and failures become a fresh retry manifest. Parallel workers may only own disjoint output roots and ledgers. `--batch-dir` on the single-image helper is still one image call. Read [references/batch-production-contract.md](references/batch-production-contract.md) before batch work.
 
-For bulk ideation/reference-board requests, use `scripts/creative_batch.py`. It invokes HeiTuzMPW once to compile distinct prompt variations, keeps Vision QC off even for 100+ text-only ideas, stages manifests/ledgers/summaries in a hidden resumable workspace, and publishes only final PNGs. Successful runs delete the workspace; failed or interrupted runs retain it for resume. `examples/batch_100_variations.py` is the reusable cross-platform entrypoint, and the packaged presets in `examples/` (including the ecommerce set: hero, thumbnail, detail close-up, color variants, lifestyle, seasonal banner, bundle, beauty, food, home/living, apparel catalog) are thin text-only wrappers over `examples/preset_runner.py`. These presets never accept reference images and must not be presented as product-photo fidelity work.
+For bulk ideation/reference-board requests, use `scripts/creative_batch.py`. It invokes MPW once to compile distinct prompt variations, keeps Vision QC off even for 100+ text-only ideas, stages manifests/ledgers/summaries in a hidden resumable workspace, and publishes only final PNGs. Successful runs delete the workspace; failed or interrupted runs retain it for resume. `examples/batch_100_variations.py` is the reusable cross-platform entrypoint, and the packaged presets in `examples/` (including the ecommerce set: hero, thumbnail, detail close-up, color variants, lifestyle, seasonal banner, bundle, beauty, food, home/living, apparel catalog) are thin text-only wrappers over `examples/preset_runner.py`. These presets never accept reference images and must not be presented as product-photo fidelity work.
 
 ### Reference-locked full-body variation series
 

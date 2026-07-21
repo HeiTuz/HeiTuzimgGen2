@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resumable, provenance-safe batch orchestration for HeiTuzimgGen2.
+"""Resumable, provenance-safe batch orchestration for ImgGen2.
 
 Dry-run is the default. Live execution requires --execute and an approval marker
 bound to the exact canonical manifest SHA-256. This module never inspects images;
@@ -30,8 +30,8 @@ import codex_subscription_transport as transport
 from portable_paths import PathCompatibilityError, is_symlink_or_reparse, normalize_local_path
 
 
-LEDGER_NAME = ".heituzimggen2-batch.json"
-LOCK_NAME = ".heituzimggen2-batch.lock"
+LEDGER_NAME = ".imggenimggen2-batch.json"
+LOCK_NAME = ".imggenimggen2-batch.lock"
 SUMMARY_JSON_NAME = "batch-summary.json"
 SUMMARY_MD_NAME = "batch-summary.md"
 SCHEMA_VERSION = 1
@@ -129,7 +129,7 @@ def load_manifest(path: Path, output_root: Path) -> tuple[list[BatchJob], str]:
     allowed = {
         "id", "prompt", "full_prompt", "output_path", "images", "promotional",
         "rendered_text_exists", "qc_required", "metadata", "series_locks", "retry_of", "retry_generation",
-        # HeiTuzMPW production JSONL fields retained as compile metadata.
+        # MPW production JSONL fields retained as compile metadata.
         "category", "cut_type", "title", "format", "tier", "lane", "palette",
         "ar", "size", "quality", "output_format", "output_compression", "labels",
         "korean_copy", "status", "qa", "teaching_point", "promo_pattern",
@@ -595,7 +595,7 @@ def build_summary(ledger: Mapping[str, object]) -> dict[str, object]:
 def summary_markdown(summary: Mapping[str, object]) -> str:
     provenance = summary.get("codex_provenance", {})
     lines = [
-        "# HeiTuzimgGen2 batch summary",
+        "# ImgGen2 batch summary",
         "",
         f"Manifest: `{summary['manifest_sha256']}`",
         f"Codex: `{provenance.get('path')}` ({provenance.get('source')}, version {provenance.get('version')})",

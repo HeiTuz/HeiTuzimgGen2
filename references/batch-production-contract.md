@@ -14,7 +14,7 @@ One JSON object per line:
 
 Required native fields: `id`, `prompt`, `output_path`. Optional: `images` (0–4), `promotional`, `rendered_text_exists`, `qc_required`, `metadata`, `series_locks`, `retry_of`. `qc_required: true` forces visual review for a job that would otherwise be a simple text-only generation; `false` never disables review triggered by references, product-photo metadata, or promotional layout.
 
-A validated `HeiTuzMPW` production JSONL record is accepted directly: `full_prompt` aliases `prompt`; category/format/tier/lane/palette/AR/size/quality/promo fields are retained as compile metadata; `cut_type: promo_poster` and text fields infer QC branches. Because the Codex transport returns PNG only, compiled `.webp`/other output suffixes are deterministically normalized to `.png`, while the original compiled path remains in metadata. Run the MPW JSONL validator before this transport preflight; this runner validates execution ownership, not prompt doctrine.
+A validated `MPW` production JSONL record is accepted directly: `full_prompt` aliases `prompt`; category/format/tier/lane/palette/AR/size/quality/promo fields are retained as compile metadata; `cut_type: promo_poster` and text fields infer QC branches. Because the Codex transport returns PNG only, compiled `.webp`/other output suffixes are deterministically normalized to `.png`, while the original compiled path remains in metadata. Run the MPW JSONL validator before this transport preflight; this runner validates execution ownership, not prompt doctrine.
 
 The loader rejects duplicate IDs, duplicate normalized output ownership, absolute/traversing paths, symlink escapes, unknown fields, missing/symlink references, and more than four references. Native manifest output paths are PNG; MPW production suffixes are normalized to PNG as described above. `output_path` is always relative to the output root.
 
@@ -60,8 +60,8 @@ There is no global-newest-PNG or claimed-pool fallback. Upstream `claimed` locki
 
 The output root owns:
 
-- `.heituzimggen2-batch.json` — atomic ledger;
-- `.heituzimggen2-batch.lock` — exclusive live runner lock;
+- `.imggenimggen2-batch.json` — atomic ledger;
+- `.imggenimggen2-batch.lock` — exclusive live runner lock;
 - `batch-summary.json` and `batch-summary.md` — deterministic final summaries.
 
 The ledger records manifest hash, config, manifest order, per-job status, attempts, source artifact, destination SHA-256/size, failure category, QC report, and timestamps. Writes use temp file + fsync + replace.
@@ -100,7 +100,7 @@ Only failed axes and failed promo checks are appended as retry deltas. Passing c
 python scripts/codex_subscription_batch.py \
   --manifest retry.jsonl \
   --output-root ./outputs \
-  --ledger ./outputs/.heituzimggen2-retry.json
+  --ledger ./outputs/.imggenimggen2-retry.json
 # repeat with --execute inside the unchanged authorized scope
 ```
 
@@ -110,7 +110,7 @@ The shared output-root lock prevents original/retry runners from overlapping, wh
 
 Parallel workers are useful above the runner rather than as an excuse to omit batch support:
 
-1. **Compiler/planner lanes** can independently classify folders and compile disjoint JSONL records through `HeiTuzMPW`.
+1. **Compiler/planner lanes** can independently classify folders and compile disjoint JSONL records through `MPW`.
 2. **Executor lanes** may own disjoint manifest shards only when each shard has a separate output root and ledger inside the authorized scope. Two agents must never share one live ledger/output root.
 3. **Critic lanes** can inspect disjoint output sets and return QC JSONL; they do not mutate PNGs or mark their own work accepted.
 4. **Prime/aggregator** validates unique IDs/output ownership, runs or supervises the authoritative pilot, reconciles ledgers and QC, generates retry manifests, and verifies final artifacts.

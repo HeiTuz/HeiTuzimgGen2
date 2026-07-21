@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gajae.local/prompt-contracts/garden-recipe/v1",
+  "title": "GardenRecipe v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "recipe_version",
+    "recipe_id",
+    "source",
+    "provenance",
+    "category",
+    "confidence",
+    "observations",
+    "inferences",
+    "qualified_tokens",
+    "locks",
+    "exclusions",
+    "intended_use"
+  ],
+  "properties": {
+    "schema_version": {"const": "garden-recipe/v1"},
+    "recipe_version": {"const": 1},
+    "recipe_id": {"type": "string", "pattern": "^gr_[A-Za-z0-9_-]{8,128}$"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "reference_hash"],
+      "properties": {
+        "reference_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$"},
+        "reference_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer", "producer_version", "analysis_schema_version", "analysis_hash"],
+      "properties": {
+        "producer": {"type": "string", "enum": ["image-reference-adapter", "design-reference-adapter", "prompt-knowledge-adapter", "image-reference-gardener", "design-reference-gardener", "prompt-knowledge-gardener"]},
+        "producer_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "analysis_schema_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "analysis_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "photo_editorial",
+        "product_reference",
+        "poster_typography",
+        "composite_reference",
+        "ui_layout",
+        "design_system",
+        "unknown"
+      ]
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "camera", "lighting", "palette"],
+      "properties": {
+        "subject": {"$ref": "#/$defs/evidenceAxis"},
+        "camera": {"$ref": "#/$defs/evidenceAxis"},
+        "lighting": {"$ref": "#/$defs/evidenceAxis"},
+        "palette": {"$ref": "#/$defs/evidenceAxis"},
+        "layout": {"$ref": "#/$defs/evidenceAxis"}
+      }
+    },
+    "inferences": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/inference"}
+    },
+    "qualified_tokens": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/qualifiedToken"}
+    },
+    "locks": {"$ref": "#/$defs/locks"},
+    "layout_tokens": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/qualifiedToken"}
+    },
+    "exclusions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1, "maxLength": 500}
+    },
+    "unresolved_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "slot", "source_reference_id", "required"],
+        "properties": {
+          "code": {"type": "string", "enum": ["exact_copy", "brand_text", "licensed_phrase", "missing_source_fact"]},
+          "slot": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+          "source_reference_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$"},
+          "required": {"const": true}
+        }
+      }
+    },
+    "intended_use": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "engine", "goal"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["IMAGE", "IMAGE_COMPOSITE", "DESIGN"]},
+        "engine": {"type": "string", "enum": ["gpt-image-2", "higgsfield", "generic-image", "frontend-agent"]},
+        "goal": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "evidenceAxis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "items"],
+      "properties": {
+        "status": {"type": "string", "enum": ["observed", "not_observable", "not_applicable"]},
+        "items": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/observation"}
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "status": {"const": "observed"},
+            "items": {"minItems": 1}
+          }
+        },
+        {
+          "properties": {
+            "status": {"const": "not_observable"},
+            "items": {"maxItems": 0}
+          }
+        },
+        {
+          "properties": {
+            "status": {"const": "not_applicable"},
+            "items": {"maxItems": 0}
+          }
+        }
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation_id", "value", "confidence", "basis"],
+      "properties": {
+        "observation_id": {"type": "string", "pattern": "^obs_[A-Za-z0-9_-]{4,128}$"},
+        "value": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "basis": {"type": "string", "enum": ["visual", "pixel_sampled", "user_supplied"]},
+        "role": {"type": "string", "minLength": 1, "maxLength": 200},
+        "material": {"type": ["string", "null"], "maxLength": 200}
+      }
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inference_id", "claim", "confidence", "based_on"],
+      "properties": {
+        "inference_id": {"type": "string", "pattern": "^inf_[A-Za-z0-9_-]{4,128}$"},
+        "claim": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "based_on": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^obs_[A-Za-z0-9_-]{4,128}$"}
+        }
+      }
+    },
+    "qualifiedToken": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["term", "effect", "scene_fit", "en"],
+      "properties": {
+        "term": {"type": "string", "minLength": 1, "maxLength": 200},
+        "effect": {"type": "string", "minLength": 1, "maxLength": 500},
+        "scene_fit": {"type": ["string", "null"], "maxLength": 500},
+        "en": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      }
+    },
+    "locks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "subject"],
+      "properties": {
+        "identity": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "subject": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    }
+  }
+}

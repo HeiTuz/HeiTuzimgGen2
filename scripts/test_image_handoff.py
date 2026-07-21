@@ -10,7 +10,7 @@ import consume_image_handoff as handoff
 class ImageHandoffTests(unittest.TestCase):
     def valid(self):
         return {
-            "schema_version": "heituz-image-production-handoff/v1",
+            "schema_version": "image-production-handoff/v2",
             "job_id": "catalog-cup-01",
             "operation": "edit",
             "prompt": "A blue ceramic cup on natural linen",

@@ -539,13 +539,13 @@ class BatchQcTests(unittest.TestCase):
             write_jsonl(qc, [{"id": "cut", "axis_scores": {"goal_fit": 5, "text_accuracy": 2, "material_realism": 5, "layout": 5}}])
             retry = root / "retry.jsonl"
             batch.reconcile_qc(manifest, out, qc, retry)
-            retry_ledger = out / ".heituzimggen2-retry.json"
+            retry_ledger = out / ".imggenimggen2-retry.json"
             summary = complete_approved_batch(retry, out, FakeRunner(), ledger_path=retry_ledger)
             self.assertEqual(summary["counts"]["succeeded"], 1)
             self.assertEqual((out / "cut.png").read_bytes(), original_bytes)
             self.assertTrue((out / "retries" / "cut-attempt-2.png").is_file())
             self.assertTrue(retry_ledger.is_file())
-            self.assertTrue((out / "heituzimggen2-retry-summary.json").is_file())
+            self.assertTrue((out / "imggenimggen2-retry-summary.json").is_file())
             self.assertTrue((out / batch.SUMMARY_JSON_NAME).is_file())
             qc_again = root / "qc-again.jsonl"
             write_jsonl(qc_again, [{"id": "cut", "axis_scores": {"goal_fit": 5, "text_accuracy": 3, "material_realism": 5, "layout": 5}}])

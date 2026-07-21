@@ -1,0 +1,10 @@
+{
+  "schema_version": "garden-recipe/v1",
+  "recipe_version": 1,
+  "recipe_id": "gr_private_20260711",
+  "source": {
+    "reference_id": "ref_private_12345678",
+    "reference_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "original_path": "/Users/example/private-reference.png"
+  }
+}

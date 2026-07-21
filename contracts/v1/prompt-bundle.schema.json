@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gajae.local/prompt-contracts/prompt-bundle/v1",
+  "title": "PromptBundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_version", "bundle_id", "source_recipe", "handoff"],
+  "properties": {
+    "schema_version": {"const": "prompt-bundle/v1"},
+    "bundle_version": {"const": 1},
+    "bundle_id": {"type": "string", "pattern": "^pb_[A-Za-z0-9_-]{8,128}$"},
+    "source_recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipe_id", "recipe_hash"],
+      "properties": {
+        "recipe_id": {"type": "string", "pattern": "^gr_[A-Za-z0-9_-]{8,128}$"},
+        "recipe_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "handoff": {"$ref": "#/$defs/generationHandoff"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "locks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "subject"],
+      "properties": {
+        "identity": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "subject": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    },
+    "promptBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "text", "unicode_char_count"],
+      "properties": {
+        "block_id": {"type": "string", "pattern": "^block_[A-Za-z0-9_-]{4,128}$"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "unicode_char_count": {"type": "integer", "minimum": 1, "maximum": 2000}
+      }
+    },
+    "variableAxis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "allowed_values"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 200},
+        "allowed_values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    },
+    "referenceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "purpose", "required"],
+      "properties": {
+        "reference_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$"},
+        "purpose": {"type": "string", "minLength": 1, "maxLength": 500},
+        "required": {"type": "boolean"}
+      }
+    },
+    "generationHandoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "mode",
+        "engine",
+        "prompt_blocks",
+        "immutable_locks",
+        "variable_axes",
+        "negative_constraints",
+        "reference_requirements",
+        "qc_acceptance_criteria"
+      ],
+      "properties": {
+        "protocol": {"const": "generation-handoff/v1"},
+        "mode": {"type": "string", "enum": ["IMAGE", "IMAGE_COMPOSITE", "DESIGN"]},
+        "engine": {"type": "string", "enum": ["gpt-image-2", "higgsfield", "generic-image", "frontend-agent"]},
+        "prompt_blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/promptBlock"}
+        },
+        "immutable_locks": {"$ref": "#/$defs/locks"},
+        "variable_axes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/variableAxis"}
+        },
+        "negative_constraints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "reference_requirements": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/referenceRequirement"}
+        },
+        "qc_acceptance_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    }
+  }
+}

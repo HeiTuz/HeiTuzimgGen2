@@ -193,6 +193,9 @@ def evaluate_qc(
 ) -> dict[str, object]:
     """Evaluate supplied local or human QC scores without inspecting an image.
 
+    Execution-time safety validation only; final visual QC, comparison, and
+    selection authority belongs to Renderline.
+
     The canonical average uses only the four required axes. text_accuracy, when
     rendered, and optional identity_consistency, when supplied, must meet the floor.
     """
@@ -285,7 +288,11 @@ def plan_qc_regeneration(
     *,
     promotional: bool = False,
 ) -> dict[str, object]:
-    """Plan one-output regeneration from a QC report without touching the file."""
+    """Plan one-output regeneration from a QC report without touching the file.
+
+    Execution-time recovery planning only; final acceptance authority stays
+    with Renderline.
+    """
     if not isinstance(promotional, bool):
         raise ValueError("promotional must be a boolean.")
     if promotional and promo_report is None:

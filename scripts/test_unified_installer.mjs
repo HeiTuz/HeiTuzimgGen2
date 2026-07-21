@@ -7,6 +7,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+if (!fs.existsSync(path.join(root, "agents", "hermes", "README.md"))) {
+  console.log("unified install/update dry-run: SKIP (install artifact has no source overlays)");
+  process.exit(0);
+}
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "imggen-unified-"));
 process.env.HEITUZ_INSTALLER_IMPORT = "1";
 const { imggenUpdateArgs, isTransientWindowsPath, npxInvocation, repairLegacyManifest } = await import("./imggen.mjs");

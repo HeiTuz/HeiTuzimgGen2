@@ -1,13 +1,13 @@
 ---
 name: ImgGen2
 description: "Generate and edit images through the default official Codex CLI subscription route, with provenance-safe single-image transport, resumable exact-N batches, independent QC, and an optional dynamic apparel full-set workflow. GPT/Codex host surface: the host and the generation transport coincide; the optional Grok route requires Hermes-native tooling and stays disabled on this host."
-version: 1.10.0
+version: 1.10.1
 author: HeiTuz
 license: MIT
 platforms: [linux, macos, windows]
 metadata:
   host_surface: codex
-  canonical_source: "HeiTuz/ImgGen2 SKILL.md v1.10.0"
+  canonical_source: "HeiTuz/ImgGen2 SKILL.md v1.10.1"
   tags: [image-generation, image-editing, chatgpt]
   category: creative
 ---
@@ -19,7 +19,7 @@ metadata:
 > - **Vision QC tool**: the "host's default Vision tool" on this host is Codex's native image input — attach the artifact to a review turn and apply the QC rubric below. No separate reviewer model is pinned.
 > - **Grok route**: the explicit-only Grok route requires the Hermes-native xAI `image_generate` tool plus `xai-oauth`. Neither exists on Codex, so an explicit Grok request always fails closed as `grok_route: disabled` — never substitute the default route for it.
 
-Generate or edit images through the official Codex CLI with an authenticated ChatGPT subscription. Codex remains the default for every ordinary request. A separate Grok route exists only for a current request that explicitly names `Grok`, `그록`, or `xAI` as the image provider, and only when Hermes has `xai-oauth` plus its native xAI `image_generate` tool. The skill remains a transport and result-QC tool. When `MPW` is installed, it may own final IMAGE prompt compilation and emit the shared portable handoff described below.
+Generate and materialize direct/native media. Codex remains the default ordinary image route. Explicit `Grok`/`xAI` requests use the existing OAuth-gated native lane; explicit `Wan`/`Alibaba` requests use a configured Hermes-native Alibaba adapter (Wan for images, HappyHorse for video). Higgsfield and Midjourney belong to Renderline, not this skill. ImgGen2 proves transport and emits artifacts; Renderline owns final visual QC, comparison, selection, and repair decisions. MPW may help write prompts, but is never a required pipeline gate.
 
 ## Capabilities
 
@@ -30,8 +30,8 @@ Generate or edit images through the official Codex CLI with an authenticated Cha
 - risk-based post-generation QC through the host's default Vision tool in `auto` mode for reference/edit/product/promo work, with simple text-only generation skipping the visual loop;
 - optional apparel full-set preparation: colors stay product metadata while `candidate_attempt_count` independently defaults to three complete candidate attempts, followed by default mixed per-cut selection across attempts at a minimum 80% family-similarity gate; an explicit `selection_mode: whole-set` keeps one coherent candidate set.
 
-Never use API-key billing for image generation, private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. Post-generation QC uses the host's currently configured default Vision model; ImgGen2 does not pin a separate reviewer model or provider. Never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use a supported file attachment; printing the path is not delivery evidence.
-Never fall back to a different generation provider or a pinned reviewer model when the configured route fails.
+Never use private endpoints, DOM automation, cookie extraction, silent provider fallback, or a model claim not supported by returned evidence. **API-key billing is prohibited except for an explicit, user-approved Alibaba Token Plan quota/billing lane.** Reuse only the credential already owned by the configured Hermes provider; never print, copy, move, or create a key. An `XAI_API_KEY` alone never enables the HeiTuz Grok route. ImgGen2 verifies transport and materialization; Renderline owns final visual QC and selection. Never turn a requested label into an attestation: `observed_model` and `model_identity_attested` stay unset unless supported evidence exists. For delivery, use a supported file attachment; printing the path is not delivery evidence.
+Never fall back to a different generation provider when the selected route fails.
 
 ## Boundaries
 
@@ -43,6 +43,8 @@ Never fall back to a different generation provider or a pinned reviewer model wh
 - On Windows, accept drive-letter paths, UNC shares, spaces, Unicode, and local `file://` URIs. Reject reserved device names, trailing dots/spaces, credential-bearing file URIs, and symlink/junction/reparse traversal. Use the standard extended-length prefix for long absolute paths instead of silently relocating them.
 
 ## Core procedures
+
+When the user explicitly asks for an in-app or authenticated browser workflow, follow [references/browser-backed-image-editing.md](references/browser-backed-image-editing.md). The browser lane must verify both protected-source materialization and the actual composer attachment before any generation prompt is submitted; successful clicks, paste events, or a visible send button are not sufficient evidence.
 
 ### Single image or edit
 
@@ -119,20 +121,29 @@ When the request contains one or more product references and asks for multiple p
 
 `auto` is risk-based, not always-on. Invoke the host's default Vision analysis tool when at least one reference/input image exists, the request edits or corrects an existing image, the work is a product-photo correction or product set, the layout is promotional, or the user explicitly asks for review/comparison. On Hermes this uses `vision_analyze`, which follows the live `auxiliary.vision` configuration instead of pinning a reviewer inside ImgGen2. The full original remains the delivery artifact and is never modified.
 
+This lane is execution-time safety validation, not final acceptance: it exists to catch transport, fidelity, and regression defects before fan-out or delivery. Renderline retains final visual QC, comparison, and selection authority for all engines, including artifacts generated here.
+
 For a text-only creation with no reference, edit, product-photo correction, promotional layout, or explicit QC request, skip Vision analysis and regeneration. Still verify the output locally: expected file exists, is non-empty, has the expected image format, and does not overwrite another artifact. Mark this path as `qc_status: skipped` with reason `simple_text_only`.
 
 The installed `vision-qc.json` contains `{version: 2, requested_mode: "auto", qc_mode: "auto", reviewer: "host-default-vision"}` and no credentials. `auto` is the default in interactive and non-interactive installs. `off` is the only alternative and disables visual review even for high-risk cases; local artifact validation still applies.
 
 When QC is required, review the image against the requested brief, source fidelity, text accuracy when applicable, material realism, layout, and cross-image consistency. **For a reference-backed human portrait or identity grid, explicitly inspect identity-bearing anchors across every panel: face geometry, eyes/nose/mouth relationship, hairline and distinctive loose strands, visible marks or natural asymmetry, skin tone, and the requested framing/alignment.** Report panel coordinates for any drift; do not accept a merely attractive grid when it fails same-person recognition. Require a structured result containing the four axis scores, pass/fail, observed defects, and the smallest regeneration delta. Portrait-grid QC may add `identity_consistency` as an optional fifth axis; when supplied it must meet the same 4.0 floor to pass, while the canonical average remains the four required axes. Regenerate only failed required cases and only with the smallest failed-axis delta. The review report records the image hash and dimensions; requested model names are not model-identity evidence.
 
+### Direct-native media routing
+
+| Request | ImgGen2 route |
+| --- | --- |
+| Ordinary single image or exact-N image batch | Codex subscription default |
+| Explicit `Grok` / `그록` / `xAI` image request with `xai-oauth` and native tool available | Grok OAuth; no API-key-only fallback |
+| Explicit `Wan` / `Alibaba` image request | Configured Hermes-native Alibaba adapter; `wan2.7-image` default or explicit `wan2.7-image-pro` |
+| Explicit `HappyHorse` / `Alibaba` video request | Configured Hermes-native Alibaba adapter; explicit `happyhorse-1.1-t2v`, `happyhorse-1.1-i2v`, or `happyhorse-1.1-r2v` |
+| Explicit Higgsfield or Midjourney request | Renderline; never emulate or replace it here |
+
+For an Alibaba lane, prove the installed provider is registered before a paid call; make that one selected route active only for the call/run, then restore the prior default provider exactly. Do not permanently change `image_gen.provider` or `video_gen.provider` without explicit direction. Local source paths are rejected for Wan/HappyHorse whenever the native Bailian endpoint accepts only public HTTP(S) references; never fabricate a URL or upload through an unverified side channel. Return the provider-materialized Hermes cache file and hand it to Renderline whenever QC, comparison, or selection is required.
+
 ### Provider routing quick reference
 
-| Request | Route |
-| --- | --- |
-| Ordinary single image or exact-N batch | Codex subscription default |
-| Explicit “Grok/그록/xAI로 생성” with `xai-oauth` and native xAI `image_generate` available | Grok OAuth |
-| Explicit Grok request without both gates, including API-key-only | Disabled; no fallback |
-| Explicit Higgsfield request | Higgsfield skill; never Grok/Codex fallback |
+The routing table above is the authority. No selected lane may silently fall back to another engine.
 
 ### Apparel full-set preparation
 

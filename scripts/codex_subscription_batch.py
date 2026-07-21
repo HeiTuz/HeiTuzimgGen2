@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Resumable, provenance-safe batch orchestration for ImgGen2.
 
-Dry-run is the default. Live execution requires --execute and an approval marker
-bound to the exact canonical manifest SHA-256. This module never inspects images;
-QC input must come from an independent human or vision review.
+Dry-run is the default. Live execution requires only --execute; the manifest and
+approval digests stay in provenance to detect resume/config drift, and no
+approval marker or environment ceremony is required. This module never inspects
+images; QC input must come from an independent human or vision review, and that
+review is execution-time safety validation — final visual QC, comparison, and
+selection authority belongs to Renderline.
 """
 from __future__ import annotations
 
